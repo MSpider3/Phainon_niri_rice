@@ -1,0 +1,16 @@
+// Minimal niri config for the nested test window. Not used by the real session.
+hotkey-overlay {
+    skip-at-startup
+}
+prefer-no-csd
+// Window corners and colours the sandboxed shell generates for the current form.
+include optional=true "@NEST@/config/niri/dms/layout.kdl"
+include optional=true "@NEST@/config/niri/dms/colors.kdl"
+screenshot-path "@SHOTS@/%Y%m%d-%H%M%S.png"
+layout {
+    gaps 10
+    focus-ring {
+        width 2
+    }
+}
+spawn-at-startup "sh" "-c" "exec sh \"$COREFLAME_DEV/nested-session.sh\""

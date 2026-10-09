@@ -1,0 +1,14 @@
+{
+    "id": "coreflameForms",
+    "name": "Coreflame Forms",
+    "description": "Switch the Coreflame theme between Phainon, Khaslana and the Flame Reaver with `dms ipc call form set <name>`",
+    "version": "0.1.0",
+    "license": "MIT",
+    "author": "local",
+    "icon": "wb_sunny",
+    "type": "daemon",
+    "capabilities": ["theme"],
+    "component": "./CoreflameForms.qml",
+    "requires_dms": ">=1.6.0",
+    "permissions": ["settings_read", "settings_write"]
+}

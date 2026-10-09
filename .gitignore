@@ -1,0 +1,14 @@
+# Local-only material that is not part of the rice
+/Chimera Phainon beta/
+/greeter/
+/preview/
+/.claude/
+/.vscode/
+
+# Personal settings snapshots and scratch files
+*.before-coreflame.json
+before.json
+*.log
+*.bak
+*~
+.DS_Store
