@@ -124,6 +124,8 @@ PanelWindow {
         property string label: ""
         property string sub: ""
         property bool on: false
+        // A tile that only opens something (no on/off state) is never shown as switched off.
+        property bool action: false
         // Shows a chevron that opens a list under the tiles
         property bool expandable: false
         property bool expanded: false
@@ -212,7 +214,7 @@ PanelWindow {
                     }
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: tile.on ? Font.Bold : Font.Medium
-                    font.strikeout: Form.reaver && !tile.on
+                    font.strikeout: Form.reaver && !tile.on && !tile.action
                     color: tile.filled ? Theme.primaryText : (tile.on ? Theme.surfaceText : Theme.withAlpha(Theme.surfaceText, 0.8))
                 }
 
@@ -278,15 +280,25 @@ PanelWindow {
         }
 
         StyledText {
-            x: Form.reaver ? 8 : 36
+            x: Form.reaver ? 28 : 36
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - x - noteText.width - 18
             elide: Text.ElideRight
             wrapMode: Text.NoWrap
-            text: Form.reaver ? (listRow.current ? "> " : "  ") + listRow.label.toLowerCase() : listRow.label
+            text: Form.reaver ? listRow.label.toLowerCase() : listRow.label
             font.pixelSize: Theme.fontSizeMedium
             font.weight: listRow.current ? Font.Bold : Font.Medium
             color: listRow.current ? Theme.surfaceText : Theme.withAlpha(Theme.surfaceText, 0.85)
+        }
+
+        StyledText {
+            visible: Form.reaver && listRow.current
+            x: 10
+            anchors.verticalCenter: parent.verticalCenter
+            text: ">"
+            font.pixelSize: Theme.fontSizeMedium
+            font.weight: Font.Bold
+            color: Theme.live
         }
 
         StyledText {
@@ -548,6 +560,228 @@ PanelWindow {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: panelWin.ipc("form", "set", formButton.modelData.id)
+                            }
+                        }
+                    }
+                }
+
+                // Forms by the hour
+                Column {
+                    id: hours
+                    property bool open: false
+                    width: parent.width
+                    spacing: 6
+
+                    Item {
+                        width: parent.width
+                        height: 34
+
+                        CfSurface {
+                            anchors.fill: parent
+                            color: Theme.surfaceContainerHigh
+                            edgeColor: Theme.withAlpha(Theme.outline, Form.khaslana ? 0.9 : 0.45)
+                            edgeWidth: Form.reaver ? 0 : 1
+                            radius: 17
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: hours.open = !hours.open
+                        }
+
+                        Row {
+                            x: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+
+                            DankIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "schedule"
+                                size: 16
+                                color: Form.schedule.enabled ? Theme.live : Theme.withAlpha(Theme.surfaceText, 0.55)
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: panelWin.tx(Form.schedule.enabled ? "By the hour · " + Form.schedule.phainon + " / " + Form.schedule.khaslana + " / " + Form.schedule.reaver : "Change form by the hour")
+                                font.pixelSize: Theme.fontSizeSmall
+                                font.weight: Font.Medium
+                                color: Theme.surfaceText
+                            }
+                        }
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+
+                            Item {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 44
+                                height: 22
+
+                                CfSurface {
+                                    anchors.fill: parent
+                                    color: Form.schedule.enabled ? Theme.primary : Theme.surfaceContainerHighest
+                                    edgeWidth: 0
+                                    radius: 11
+                                    cut: 5
+                                }
+
+                                StyledText {
+                                    anchors.centerIn: parent
+                                    text: panelWin.tx(Form.schedule.enabled ? "On" : "Off")
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    font.weight: Font.Bold
+                                    color: Form.schedule.enabled ? Theme.primaryText : Theme.withAlpha(Theme.surfaceText, 0.7)
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Form.setScheduleEnabled(!Form.schedule.enabled)
+                                }
+                            }
+
+                            DankIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: hours.open ? "expand_less" : "expand_more"
+                                size: 18
+                                color: Theme.withAlpha(Theme.surfaceText, 0.7)
+                            }
+                        }
+                    }
+
+                    Item {
+                        visible: hours.open
+                        width: parent.width
+                        height: hoursColumn.implicitHeight + 20
+
+                        CfSurface {
+                            anchors.fill: parent
+                            color: Theme.surfaceContainerHigh
+                            edgeColor: Theme.withAlpha(Theme.outline, Form.khaslana ? 0.9 : 0.45)
+                            edgeWidth: Form.reaver ? 0 : 1
+                            radius: 18
+                        }
+
+                        Column {
+                            id: hoursColumn
+                            x: 14
+                            y: 10
+                            width: parent.width - 28
+                            spacing: 6
+
+                            Heading {
+                                text: panelWin.tx("TIME · EACH FORM STARTS AT")
+                            }
+
+                            Repeater {
+                                model: [
+                                    {
+                                        "id": "phainon",
+                                        "label": "Phainon"
+                                    },
+                                    {
+                                        "id": "khaslana",
+                                        "label": "Khaslana"
+                                    },
+                                    {
+                                        "id": "reaver",
+                                        "label": "Flame Reaver"
+                                    }
+                                ]
+
+                                Item {
+                                    id: hourRow
+                                    required property var modelData
+                                    width: hoursColumn.width
+                                    height: 30
+
+                                    StyledText {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: panelWin.tx(hourRow.modelData.label)
+                                        font.pixelSize: Theme.fontSizeMedium
+                                        font.weight: Form.scheduledForm(new Date()) === hourRow.modelData.id && Form.schedule.enabled ? Font.Bold : Font.Medium
+                                        color: Theme.surfaceText
+                                    }
+
+                                    Row {
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 4
+
+                                        Repeater {
+                                            model: [
+                                                {
+                                                    "text": "−1h",
+                                                    "by": -60
+                                                },
+                                                {
+                                                    "text": "−15",
+                                                    "by": -15
+                                                },
+                                                {
+                                                    "text": "",
+                                                    "by": 0
+                                                },
+                                                {
+                                                    "text": "+15",
+                                                    "by": 15
+                                                },
+                                                {
+                                                    "text": "+1h",
+                                                    "by": 60
+                                                }
+                                            ]
+
+                                            Item {
+                                                id: step
+                                                required property var modelData
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: modelData.by === 0 ? 58 : 38
+                                                height: 24
+
+                                                CfSurface {
+                                                    anchors.fill: parent
+                                                    visible: step.modelData.by !== 0
+                                                    color: stepMouse.containsMouse ? Theme.withAlpha(Theme.primary, 0.25) : Theme.surfaceContainerHighest
+                                                    edgeWidth: 0
+                                                    radius: 12
+                                                    cut: 5
+                                                }
+
+                                                StyledText {
+                                                    anchors.centerIn: parent
+                                                    text: step.modelData.by === 0 ? Form.schedule[hourRow.modelData.id] : step.modelData.text
+                                                    font.family: step.modelData.by === 0 ? Theme.monoFontFamily : Theme.fontFamily
+                                                    font.pixelSize: step.modelData.by === 0 ? Theme.fontSizeMedium : Theme.fontSizeSmall
+                                                    font.weight: step.modelData.by === 0 ? Font.Bold : Font.Medium
+                                                    color: step.modelData.by === 0 ? Theme.live : Theme.surfaceText
+                                                }
+
+                                                MouseArea {
+                                                    id: stepMouse
+                                                    anchors.fill: parent
+                                                    enabled: step.modelData.by !== 0
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: Form.shiftStart(hourRow.modelData.id, step.modelData.by)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            StyledText {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: panelWin.tx("A form you pick by hand stays until the next start time.")
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.withAlpha(Theme.surfaceText, 0.55)
                             }
                         }
                     }
@@ -903,6 +1137,10 @@ PanelWindow {
                 }
 
                 // Toggles, in rows; a tile's list opens right under its own row.
+                Column {
+                width: parent.width
+                spacing: 8
+
                 Grid {
                     width: parent.width
                     columns: Form.reaver ? 1 : 2
@@ -919,6 +1157,14 @@ PanelWindow {
                         expanded: panelWin.openList === "wifi"
                         onExpand: panelWin.toggleList("wifi")
                         onClicked: NetworkService.toggleWifiRadio()
+                    }
+
+                    // The Flame Reaver stacks its tiles, so the Wi-Fi list belongs between them.
+                    Loader {
+                        width: panelWin.tileWidth
+                        active: Form.reaver && panelWin.openList === "wifi"
+                        visible: active
+                        sourceComponent: listBlock
                     }
 
                     Tile {
@@ -940,7 +1186,7 @@ PanelWindow {
 
                 Loader {
                     width: parent.width
-                    active: panelWin.openList === "wifi" || panelWin.openList === "bluetooth"
+                    active: (panelWin.openList === "wifi" && !Form.reaver) || panelWin.openList === "bluetooth"
                     visible: active
                     sourceComponent: listBlock
                 }
@@ -1039,12 +1285,15 @@ PanelWindow {
                         icon: "content_paste"
                         label: "Clipboard"
                         glyph: "trickery"
+                        action: true
                         sub: "History"
                         onClicked: {
                             panelWin.close();
                             panelWin.ipc("clipboard", "toggle");
                         }
                     }
+                }
+
                 }
 
                 // Plugin tiles: every plugin widget that offers a control-centre tile gets one here.

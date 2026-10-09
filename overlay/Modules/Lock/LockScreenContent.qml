@@ -355,6 +355,8 @@ Item {
 
     CfLockOrnament {
         anchors.fill: parent
+        // Lets the date step down when notifications push the password field lower.
+        fieldBottom: passwordLayout.y + passwordLayout.height
     }
 
     SystemClock {

@@ -15,6 +15,8 @@ Item {
     readonly property color ink: "#F5F6E6"
     readonly property color accent: Form.reaver ? Theme.live : Theme.secondary
     readonly property real d: Math.round(Math.min(width, height) * 0.5)
+    // Screen position of the bottom of the password area, given by the lock screen.
+    property real fieldBottom: 0
 
     visible: Form.active
 
@@ -153,8 +155,14 @@ Item {
         }
 
         Column {
+            id: dateBlock
+            // Below the password field, wherever it ends up: the field moves down when
+            // notifications are listed above it. If that leaves no room inside the disc, the
+            // date steps out and sits just under it.
+            readonly property real wanted: Math.max(root.d * 0.68, root.fieldBottom - sun.y + 14)
+            readonly property bool outside: wanted + height > root.d * 0.88
             anchors.horizontalCenter: parent.horizontalCenter
-            y: Math.round(root.d * 0.68)
+            y: Math.round(outside ? root.d + 16 : wanted)
             spacing: 4
 
             Text {
@@ -185,7 +193,7 @@ Item {
     // The form's words, and the count
     Column {
         anchors.horizontalCenter: parent.horizontalCenter
-        y: Math.round(sun.y + root.d + 26)
+        y: Math.round(sun.y + root.d + 26 + (dateBlock.outside ? dateBlock.height + 14 : 0))
         spacing: 8
 
         Text {

@@ -154,6 +154,98 @@ Singleton {
     }
 
     // The Dawn Device's five light periods, mapped onto the day.
+    // Forms by the hour: each form has a start time and holds until the next one starts.
+    // Kept in ~/.config/coreflame/schedule.json; a form picked by hand stays until the next start.
+    readonly property string stateDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/coreflame"
+    readonly property alias schedule: schedule
+    property string lastScheduled: ""
+
+    FileView {
+        id: scheduleFile
+        path: root.stateDir + "/schedule.json"
+        blockLoading: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+
+        JsonAdapter {
+            id: schedule
+            property bool enabled: false
+            property string phainon: "08:00"
+            property string khaslana: "17:00"
+            property string reaver: "01:00"
+        }
+    }
+
+    function minutesOf(text) {
+        const m = /^(\d{1,2}):(\d{2})$/.exec(text ?? "");
+        return m ? (parseInt(m[1]) % 24) * 60 + parseInt(m[2]) % 60 : 0;
+    }
+
+    function scheduledForm(now) {
+        const at = now.getHours() * 60 + now.getMinutes();
+        const starts = [["phainon", minutesOf(schedule.phainon)], ["khaslana", minutesOf(schedule.khaslana)], ["reaver", minutesOf(schedule.reaver)]];
+        starts.sort((a, b) => a[1] - b[1]);
+        // Before the first start of the day, the last one of yesterday still holds.
+        let pick = starts[starts.length - 1][0];
+        for (const start of starts) {
+            if (start[1] <= at)
+                pick = start[0];
+        }
+        return pick;
+    }
+
+    function followSchedule(force) {
+        if (!active || !schedule.enabled) {
+            lastScheduled = "";
+            return;
+        }
+        const wanted = scheduledForm(new Date());
+        if (wanted === lastScheduled && !force)
+            return;
+        if (wanted === form) {
+            lastScheduled = wanted;
+            return;
+        }
+        // Not marked as done until the form has really changed: just after start-up the
+        // form-switch plugin may not be listening yet, and the retry timer asks again.
+        Quickshell.execDetached(["dms", "ipc", "call", "form", "set", wanted]);
+        scheduleRetry.restart();
+    }
+
+    Timer {
+        id: scheduleRetry
+        interval: 5000
+        onTriggered: root.followSchedule(false)
+    }
+
+    function saveSchedule() {
+        scheduleFile.writeAdapter();
+        followSchedule(true);
+    }
+
+    function setScheduleEnabled(on) {
+        schedule.enabled = on;
+        saveSchedule();
+    }
+
+    // Moves one form's start time by a number of minutes, wrapping round midnight.
+    function shiftStart(name, minutes) {
+        const at = (minutesOf(schedule[name]) + minutes + 1440) % 1440;
+        schedule[name] = String(Math.floor(at / 60)).padStart(2, "0") + ":" + String(at % 60).padStart(2, "0");
+        saveSchedule();
+    }
+
+    Component.onCompleted: Quickshell.execDetached(["mkdir", "-p", stateDir])
+
+    Timer {
+        interval: 30000
+        repeat: true
+        running: root.active && schedule.enabled
+        triggeredOnStart: true
+        onTriggered: root.followSchedule(false)
+    }
+
     function dawnPeriod(hour) {
         if (hour < 5 || hour >= 21)
             return "Curtain-Fall Hour";

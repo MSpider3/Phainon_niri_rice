@@ -6,7 +6,8 @@ import qs.Services
 import qs.Widgets
 
 // Law: the system monitor, dropping out of the island. Load meters on top, then the busiest
-// processes. Tab switches between sorting by CPU and by memory; Delete twice ends a process.
+// processes. Tab switches between sorting by CPU and by memory. Right-click a process for its
+// menu (details, copy, end, force kill); Delete twice ends the selected one from the keyboard.
 PanelWindow {
     id: mon
 
@@ -16,6 +17,11 @@ PanelWindow {
     property real reveal: shown ? 1 : 0
     property int selected: 0
     property int armed: -1
+    // Right-click menu and details card: the process they are about, and where the menu opens.
+    property var menuFor: null
+    property real menuX: 0
+    property real menuY: 0
+    property var infoFor: null
 
     readonly property var modules: ["processes", "cpu", "memory", "system"]
     readonly property var processes: (DgopService.processes ?? []).slice(0, 14)
@@ -34,6 +40,21 @@ PanelWindow {
     function close() {
         shown = false;
         armed = -1;
+        menuFor = null;
+        infoFor = null;
+    }
+
+    function send(proc, name) {
+        if (proc)
+            Quickshell.execDetached(["kill", "-" + name, String(proc.pid)]);
+    }
+
+    function copy(text) {
+        Quickshell.execDetached(["dms", "cl", "copy", String(text)]);
+    }
+
+    function memory(kb) {
+        return kb >= 1048576 ? (kb / 1048576).toFixed(1) + " GB" : Math.round(kb / 1024) + " MB";
     }
 
     function toggle() {
@@ -137,7 +158,14 @@ PanelWindow {
             anchors.fill: parent
             focus: true
 
-            Keys.onEscapePressed: mon.close()
+            Keys.onEscapePressed: {
+                if (mon.menuFor)
+                    mon.menuFor = null;
+                else if (mon.infoFor)
+                    mon.infoFor = null;
+                else
+                    mon.close();
+            }
             Keys.onDownPressed: {
                 mon.selected = Math.min(mon.processes.length - 1, mon.selected + 1);
                 mon.armed = -1;
@@ -363,8 +391,15 @@ PanelWindow {
                         }
                         onClicked: mouse => {
                             mon.selected = row.index;
-                            if (mouse.button === Qt.RightButton)
-                                mon.end(row.index);
+                            mon.armed = -1;
+                            if (mouse.button === Qt.RightButton) {
+                                const at = mapToItem(panel, mouse.x, mouse.y);
+                                mon.menuX = Math.min(at.x, panel.width - 236);
+                                mon.menuY = Math.min(at.y, panel.height - 200);
+                                mon.menuFor = row.modelData;
+                            } else {
+                                mon.menuFor = null;
+                            }
                             keys.forceActiveFocus();
                         }
                     }
@@ -376,9 +411,236 @@ PanelWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: Form.reaver ? 18 : 14
-            text: mon.tx("↑↓ select   Tab sort   Delete twice (or right-click twice) ends a process   Esc close")
+            text: mon.tx("↑↓ select   Tab sort   Right-click for the menu   Delete twice ends a process   Esc close")
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.withAlpha(Theme.surfaceText, 0.45)
+        }
+
+        // Details card
+        Item {
+            id: info
+            visible: mon.infoFor !== null
+            anchors.centerIn: parent
+            width: 460
+            height: infoColumn.implicitHeight + 28
+
+            MouseArea {
+                anchors.fill: parent
+            }
+
+            CfSurface {
+                anchors.fill: parent
+                color: Theme.surfaceContainerHighest
+                edgeColor: Theme.primary
+                edgeWidth: 1
+                radius: 16
+            }
+
+            Column {
+                id: infoColumn
+                x: 16
+                y: 14
+                width: parent.width - 32
+                spacing: 6
+
+                StyledText {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: mon.tx(mon.infoFor?.command ?? "")
+                    font.family: Form.display(Theme.fontFamily)
+                    font.pixelSize: Theme.fontSizeLarge
+                    font.weight: Font.DemiBold
+                    color: Theme.surfaceText
+                }
+
+                Repeater {
+                    model: mon.infoFor ? [["PID", mon.infoFor.pid], ["Parent PID", mon.infoFor.ppid || "-"], ["User", mon.infoFor.username || "-"], ["CPU", (mon.infoFor.cpu ?? 0).toFixed(1) + "%"], ["Memory", mon.memory(mon.infoFor.memoryKB ?? 0) + "  (" + (mon.infoFor.memoryPercent ?? 0).toFixed(1) + "%)"]] : []
+
+                    Item {
+                        required property var modelData
+                        width: infoColumn.width
+                        height: 20
+
+                        StyledText {
+                            text: mon.tx(modelData[0])
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.withAlpha(Theme.surfaceText, 0.6)
+                        }
+
+                        Text {
+                            anchors.right: parent.right
+                            text: modelData[1]
+                            font.family: Theme.monoFontFamily
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceText
+                        }
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WrapAnywhere
+                    maximumLineCount: 4
+                    elide: Text.ElideRight
+                    text: mon.infoFor?.fullCommand || mon.infoFor?.command || ""
+                    font.family: Theme.monoFontFamily
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.withAlpha(Theme.surfaceText, 0.75)
+                }
+
+                StyledText {
+                    anchors.right: parent.right
+                    text: mon.tx("Close")
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.Bold
+                    color: Theme.primary
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: mon.infoFor = null
+                    }
+                }
+            }
+        }
+
+        // Right-click menu
+        MouseArea {
+            anchors.fill: parent
+            visible: mon.menuFor !== null
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: mon.menuFor = null
+        }
+
+        Item {
+            visible: mon.menuFor !== null
+            x: mon.menuX
+            y: mon.menuY
+            width: 228
+            height: menuColumn.implicitHeight + 12
+
+            CfSurface {
+                anchors.fill: parent
+                color: Theme.surfaceContainerHighest
+                edgeColor: Theme.withAlpha(Theme.outline, 0.9)
+                edgeWidth: 1
+                radius: 12
+                cut: 8
+            }
+
+            Column {
+                id: menuColumn
+                x: 6
+                y: 6
+                width: parent.width - 12
+
+                Repeater {
+                    model: [
+                        {
+                            "id": "info",
+                            "icon": "info",
+                            "label": "View details"
+                        },
+                        {
+                            "id": "pid",
+                            "icon": "content_copy",
+                            "label": "Copy PID"
+                        },
+                        {
+                            "id": "command",
+                            "icon": "terminal",
+                            "label": "Copy command"
+                        },
+                        {
+                            "id": "stop",
+                            "icon": "pause",
+                            "label": "Pause (stop)"
+                        },
+                        {
+                            "id": "cont",
+                            "icon": "play_arrow",
+                            "label": "Resume"
+                        },
+                        {
+                            "id": "term",
+                            "icon": "close",
+                            "label": "End process"
+                        },
+                        {
+                            "id": "kill",
+                            "icon": "dangerous",
+                            "label": "Force kill"
+                        }
+                    ]
+
+                    Item {
+                        id: entry
+                        required property var modelData
+                        readonly property bool danger: modelData.id === "term" || modelData.id === "kill"
+                        width: menuColumn.width
+                        height: 30
+
+                        Rectangle {
+                            anchors.fill: parent
+                            visible: entryMouse.containsMouse
+                            color: Theme.withAlpha(entry.danger ? Theme.error : Theme.primary, 0.22)
+                        }
+
+                        DankIcon {
+                            visible: !Form.reaver
+                            x: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: entry.modelData.icon
+                            size: 16
+                            color: entry.danger ? Theme.error : Theme.primary
+                        }
+
+                        StyledText {
+                            x: Form.reaver ? 10 : 32
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: mon.tx(entry.modelData.label)
+                            font.pixelSize: Theme.fontSizeMedium
+                            color: entry.danger ? Theme.error : Theme.surfaceText
+                        }
+
+                        MouseArea {
+                            id: entryMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const proc = mon.menuFor;
+                                mon.menuFor = null;
+                                switch (entry.modelData.id) {
+                                case "info":
+                                    mon.infoFor = proc;
+                                    break;
+                                case "pid":
+                                    mon.copy(proc.pid);
+                                    break;
+                                case "command":
+                                    mon.copy(proc.fullCommand || proc.command);
+                                    break;
+                                case "stop":
+                                    mon.send(proc, "STOP");
+                                    break;
+                                case "cont":
+                                    mon.send(proc, "CONT");
+                                    break;
+                                case "term":
+                                    mon.send(proc, "TERM");
+                                    break;
+                                case "kill":
+                                    mon.send(proc, "KILL");
+                                    break;
+                                }
+                                keys.forceActiveFocus();
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
