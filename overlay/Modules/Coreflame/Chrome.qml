@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Io
 import Quickshell.Widgets
 import Quickshell.Services.Mpris
 import qs.Common
@@ -329,6 +330,9 @@ PanelWindow {
         onToastChanged: toastTimer.restart()
         readonly property bool peek: islandHover.hovered && !busy && !!player
         property int recSeconds: 0
+        // A screen cast alone is only sharing (a meeting, OBS preview). It counts as a recording
+        // when a recorder is running or OBS has a video file open for writing.
+        property bool recording: false
 
         function announce(what, ms) {
             if (!ready)
@@ -396,9 +400,27 @@ PanelWindow {
         Timer {
             interval: 1000
             repeat: true
-            running: NiriService.hasActiveCast
+            running: island.recording
             onRunningChanged: island.recSeconds = 0
             onTriggered: island.recSeconds++
+        }
+
+        Process {
+            id: recorderCheck
+            command: ["sh", "-c", "pgrep -x 'wf-recorder|wl-screenrec|gpu-screen-reco|kooha' > /dev/null && exit 0; for p in $(pgrep -x obs); do for f in /proc/$p/fd/*; do case \"$(readlink \"$f\" 2> /dev/null)\" in *.mkv|*.mp4|*.mov|*.flv|*.ts|*.webm) case \"$(sed -n 's/^flags:[[:space:]]*//p' /proc/$p/fdinfo/${f##*/} 2> /dev/null)\" in *1|*2) exit 0 ;; esac ;; esac; done; done; exit 1"]
+            onExited: code => island.recording = NiriService.hasActiveCast && code === 0
+        }
+
+        Timer {
+            interval: 3000
+            repeat: true
+            triggeredOnStart: true
+            running: NiriService.hasActiveCast
+            onRunningChanged: {
+                if (!running)
+                    island.recording = false;
+            }
+            onTriggered: recorderCheck.running = true
         }
 
         Connections {
@@ -718,8 +740,17 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
 
+                // Shared, not recorded: an icon and nothing else
+                DankIcon {
+                    visible: NiriService.hasActiveCast && !island.recording
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "screen_share"
+                    size: 17
+                    color: Theme.error
+                }
+
                 Rectangle {
-                    visible: NiriService.hasActiveCast
+                    visible: island.recording
                     anchors.verticalCenter: parent.verticalCenter
                     width: 9
                     height: 9
@@ -728,7 +759,7 @@ PanelWindow {
                 }
 
                 StyledText {
-                    visible: NiriService.hasActiveCast
+                    visible: island.recording
                     anchors.verticalCenter: parent.verticalCenter
                     text: Math.floor(island.recSeconds / 60) + ":" + String(island.recSeconds % 60).padStart(2, "0")
                     font.pixelSize: Theme.fontSizeMedium

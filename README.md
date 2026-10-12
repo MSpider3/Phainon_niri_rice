@@ -65,6 +65,8 @@ You need:
 - DankMaterialShell **1.6.2**, running as the usual `dms` systemd user service
 - `rsync`, `python3` and `git`
 
+**Fair warning:** I built this for my own laptop (Fedora, niri, one 1080p screen) and that is the only machine it has been used on. It works for me; it might not work the same on yours. Different distro, screen size, DMS version or hardware can all trip it up, so treat it as something to try and tinker with, not a polished release.
+
 This is built on the DMS 1.6.2 interface. On another DMS version it may not load. If that happens the safety net simply drops you back to stock DMS.
 
 ## Install
