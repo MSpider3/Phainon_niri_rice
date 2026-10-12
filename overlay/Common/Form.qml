@@ -165,8 +165,8 @@ Singleton {
         path: root.stateDir + "/schedule.json"
         blockLoading: true
         printErrors: false
-        watchChanges: true
-        onFileChanged: reload()
+        // Read once at start. The values in memory are the truth after that; watching the file
+        // made a save race with its own reload and flip the switch back off.
 
         JsonAdapter {
             id: schedule
@@ -220,8 +220,21 @@ Singleton {
     }
 
     function saveSchedule() {
-        scheduleFile.writeAdapter();
+        scheduleFile.setText(JSON.stringify({
+            "enabled": schedule.enabled,
+            "phainon": schedule.phainon,
+            "khaslana": schedule.khaslana,
+            "reaver": schedule.reaver
+        }, null, 2) + "\n");
         followSchedule(true);
+    }
+
+    function setStart(name, time) {
+        if (["phainon", "khaslana", "reaver"].indexOf(name) < 0 || !/^\d{1,2}:\d{2}$/.test(time))
+            return false;
+        schedule[name] = String(Math.floor(minutesOf(time) / 60)).padStart(2, "0") + ":" + String(minutesOf(time) % 60).padStart(2, "0");
+        saveSchedule();
+        return true;
     }
 
     function setScheduleEnabled(on) {

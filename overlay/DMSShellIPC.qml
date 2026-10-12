@@ -1485,6 +1485,31 @@ Item {
         target: "systemupdater"
     }
 
+    // Coreflame: forms by the hour, from a terminal.
+    //   dms ipc call formschedule on | off | status
+    //   dms ipc call formschedule set khaslana 17:30
+    IpcHandler {
+        function on(): string {
+            Form.setScheduleEnabled(true);
+            return status();
+        }
+
+        function off(): string {
+            Form.setScheduleEnabled(false);
+            return status();
+        }
+
+        function set(name: string, time: string): string {
+            return Form.setStart(name, time) ? status() : "ERROR: use a form (phainon, khaslana, reaver) and a time like 17:30";
+        }
+
+        function status(): string {
+            return (Form.schedule.enabled ? "on" : "off") + "  phainon " + Form.schedule.phainon + "  khaslana " + Form.schedule.khaslana + "  reaver " + Form.schedule.reaver + "  now: " + Form.scheduledForm(new Date());
+        }
+
+        target: "formschedule"
+    }
+
     IpcHandler {
         function open(): string {
             if (Form.chrome && Form.chromes.length > 0) {
