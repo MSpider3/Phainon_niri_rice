@@ -96,6 +96,7 @@ PanelWindow {
         mode = "all";
         actionsFor = null;
         query = "";
+        input.text = "";
         input.text = typed ?? "";
         fileHits = [];
         shown = true;
@@ -162,6 +163,7 @@ PanelWindow {
         else {
             AppUsageHistoryData.addAppUsage(item);
             SessionService.launchDesktopEntry(item);
+            Coreflames.earn("reason");
         }
     }
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the icon and folder packs the three forms use.
+# Installs the icon, folder and cursor packs the three forms use.
 #
 # Base pack: Gruvbox Plus (github.com/SylEleuth/gruvbox-plus-icon-pack, GPL-3.0), whose app icons
 # sit on muted paper-and-charcoal plates. On top of it this makes three small icon themes that
@@ -81,4 +81,11 @@ EOF
 for theme in Coreflame-Phainon Coreflame-Khaslana Coreflame-Reaver Gruvbox-Plus-Dark Gruvbox-Plus-Light; do
     gtk-update-icon-cache -q -f "$icons/$theme" 2> /dev/null || true
 done
-echo "Icon themes ready. The forms pick them up on the next form change or shell start."
+# Cursors, one per form: Bibata Modern Ice, Amber and Classic (github.com/ful1e5/Bibata_Cursor, GPL-3.0).
+for variant in Bibata-Modern-Ice Bibata-Modern-Amber Bibata-Modern-Classic; do
+    if [ ! -d "$icons/$variant" ]; then
+        curl -sL "https://github.com/ful1e5/Bibata_Cursor/releases/download/v2.0.7/$variant.tar.xz" | tar -xJ -C "$icons"
+    fi
+done
+
+echo "Icon and cursor themes ready. The forms pick them up on the next form change or shell start."

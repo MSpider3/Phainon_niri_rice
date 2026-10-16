@@ -32,14 +32,14 @@ snapshot)
 import json, subprocess, sys
 settings, session, out = sys.argv[1:4]
 s = json.load(open(settings))
-keep = {"settings": {k: s.get(k) for k in ("currentThemeName", "currentThemeCategory", "customThemeFile", "registryThemeVariants", "iconThemeDark", "iconThemeLight")}}
+keep = {"settings": {k: s.get(k) for k in ("currentThemeName", "currentThemeCategory", "customThemeFile", "registryThemeVariants", "iconThemeDark", "iconThemeLight", "cursorSettings")}}
 try:
     st = json.load(open(session))
 except Exception:
     st = {}
 keep["session"] = {k: st.get(k) for k in ("isLightMode", "wallpaperCyclingEnabled", "wallpaperPath")}
 keep["gsettings"] = {}
-for key in ("color-scheme", "gtk-theme", "icon-theme"):
+for key in ("color-scheme", "gtk-theme", "icon-theme", "cursor-theme"):
     try:
         keep["gsettings"][key] = subprocess.run(["gsettings", "get", "org.gnome.desktop.interface", key], capture_output=True, text=True).stdout.strip().strip("'")
     except Exception:
@@ -59,6 +59,12 @@ gtk-on)
     ;;
 
 gtk-off)
+    # The Starship cycle tag belongs to the forms; without the file it simply stops showing.
+    rm -f "$state/prompt"
+    # Fastfetch: put your own config back in place of the form's.
+    if [ -L "$home_cfg/fastfetch/config.jsonc" ] && [ -f "$state/fastfetch-config.jsonc.before" ]; then
+        rm -f "$home_cfg/fastfetch/config.jsonc" && cp "$state/fastfetch-config.jsonc.before" "$home_cfg/fastfetch/config.jsonc"
+    fi
     if [ -f "$state/gtk4-gtk.css.before" ]; then
         cp "$state/gtk4-gtk.css.before" "$home_cfg/gtk-4.0/gtk.css" && rm -f "$state/gtk4-gtk.css.before"
     fi

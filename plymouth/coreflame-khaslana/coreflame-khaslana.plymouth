@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Coreflame Khaslana
+Description=Boot splash for the Khaslana form of the Coreflame rice
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/coreflame-khaslana
+ScriptFile=/usr/share/plymouth/themes/coreflame-khaslana/coreflame-khaslana.script

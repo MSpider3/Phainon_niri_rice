@@ -56,7 +56,7 @@ OnFailure=coreflame-fallback.service
 
 [Service]
 Environment=DMS_SHELL_DIR=$target
-TimeoutStartSec=45
+TimeoutStartSec=60
 # One failure is enough to go back to stock; no retry loop.
 Restart=no
 ExecStartPost=/bin/sh $state/guard.sh check

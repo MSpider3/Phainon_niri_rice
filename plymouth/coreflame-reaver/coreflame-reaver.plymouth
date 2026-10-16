@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Coreflame Flame Reaver
+Description=Boot splash for the Flame Reaver form of the Coreflame rice
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/coreflame-reaver
+ScriptFile=/usr/share/plymouth/themes/coreflame-reaver/coreflame-reaver.script

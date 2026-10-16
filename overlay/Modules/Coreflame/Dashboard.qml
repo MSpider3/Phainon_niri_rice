@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
@@ -18,6 +19,10 @@ PanelWindow {
 
     // "" is the summary; otherwise "music", "weather", "wallpaper" or "time"
     property string view: ""
+    onViewChanged: {
+        if (view === "weather")
+            Coreflames.earn("sky");
+    }
     property bool shown: false
     property real reveal: shown ? 1 : 0
 
@@ -93,6 +98,12 @@ PanelWindow {
             easing.type: Form.phainon ? Easing.OutBack : (Form.khaslana ? Easing.InOutCubic : Easing.OutCubic)
             easing.overshoot: 0.8
         }
+    }
+
+    // Destroyed while open (a screen unplugged, another theme picked): release what opening took.
+    Component.onDestruction: {
+        if (shown)
+            shown = false;
     }
 
     onShownChanged: {
@@ -631,6 +642,7 @@ PanelWindow {
                                     meter: true
                                     width: parent.width - 56 - 44 - 16
                                     value: modelData.value
+                                    tide: modelData.name === "Memory"
                                     tone: modelData.alarm ? Theme.error : Theme.primary
                                 }
 
@@ -834,6 +846,46 @@ PanelWindow {
                 }
             }
 
+            // The Flame-Chase: twelve Titans' Coreflames, lit as they are gathered
+            Item {
+                width: parent.width
+                height: 34
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 14
+
+                    StyledText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: dash.tx("FLAME-CHASE") + "  " + Coreflames.count + " / 12"
+                        font.pixelSize: Theme.fontSizeSmall
+                        font.letterSpacing: 1.4
+                        color: Theme.withAlpha(Theme.surfaceText, 0.6)
+                    }
+
+                    Repeater {
+                        model: Coreflames.order
+
+                        CfGlyph {
+                            required property string modelData
+                            readonly property bool lit: Coreflames.has(modelData) && Coreflames.count >= 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: modelData
+                            size: 18
+                            strokeWidth: lit ? 1.9 : 1.3
+                            color: lit ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.22)
+
+                            HoverHandler {
+                                id: titanHover
+                            }
+
+                            ToolTip.visible: titanHover.hovered
+                            ToolTip.text: Coreflames.titans[modelData][0] + " · " + Coreflames.titans[modelData][1]
+                        }
+                    }
+                }
+            }
+
             Row {
                 spacing: dash.gap
 
@@ -867,6 +919,14 @@ PanelWindow {
                     onClicked: dash.view = "weather"
                 }
             }
+
+            // Aedes Elysiae: a line of wheat under the Phainon summary
+            CfWheat {
+                visible: Form.phainon
+                width: parent.width
+                height: 22
+                spacing: 12
+            }
         }
     }
 
@@ -879,7 +939,7 @@ PanelWindow {
             spacing: 14
 
             readonly property MprisPlayer player: MprisController.activePlayer
-            readonly property var lines: [["time", (clock.date?.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm ap") ?? "") + "  ·  " + (clock.date?.toLocaleDateString(I18n.locale(), "dddd d MMMM") ?? "") + "  ·  " + Form.dawnPeriod(clock.date?.getHours() ?? 0)], ["sky", WeatherService.weather.available ? WeatherService.currentTempText(false) + "  ·  " + WeatherService.getWeatherCondition(WeatherService.weather.wCode) + "  ·  " + (WeatherService.weather.city ?? "") : "nothing."], ["law", "cpu " + Math.round(DgopService.cpuUsage || 0) + "  ·  heat " + Math.round(DgopService.cpuTemperature || 0) + "°  ·  mem " + Math.round(DgopService.memoryUsage || 0)], ["ocean", player ? (player.trackTitle || player.identity || "") + (player.trackArtist ? "  ·  " + player.trackArtist : "") : "nothing."], ["cycle", Form.cycleText + "  ·  all is futility."]]
+            readonly property var lines: [["time", (clock.date?.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm ap") ?? "") + "  ·  " + (clock.date?.toLocaleDateString(I18n.locale(), "dddd d MMMM") ?? "") + "  ·  " + Form.dawnPeriod(clock.date?.getHours() ?? 0)], ["sky", WeatherService.weather.available ? WeatherService.currentTempText(false) + "  ·  " + WeatherService.getWeatherCondition(WeatherService.weather.wCode) + "  ·  " + (WeatherService.weather.city ?? "") : "nothing."], ["law", "cpu " + Math.round(DgopService.cpuUsage || 0) + "  ·  heat " + Math.round(DgopService.cpuTemperature || 0) + "°  ·  mem " + Math.round(DgopService.memoryUsage || 0)], ["ocean", player ? (player.trackTitle || player.identity || "") + (player.trackArtist ? "  ·  " + player.trackArtist : "") : "nothing."], ["coreflames", Coreflames.count + " of 12 gathered  ·  " + Coreflames.order.filter(n => Coreflames.has(n)).map(n => Coreflames.titans[n][0].toLowerCase()).join(", ")], ["cycle", Form.cycleText + "  ·  all is futility."]]
 
             Column {
                 spacing: 7
@@ -1494,7 +1554,8 @@ PanelWindow {
                 readonly property real cellWidth: Math.floor((dash.panelWidth - 36 - 3 * 10) / 4)
                 columns: 4
                 spacing: 10
-                height: 3 * 100 + 2 * 10
+                readonly property int rows: Math.max(1, Math.min(3, Math.ceil(files.count / 4)))
+                height: rows * 100 + (rows - 1) * 10
 
                 Repeater {
                     model: Math.max(0, Math.min(walls.perPage, files.count - walls.page * walls.perPage))

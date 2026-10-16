@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Coreflame Phainon
+Description=Boot splash for the Phainon form of the Coreflame rice
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/coreflame-phainon
+ScriptFile=/usr/share/plymouth/themes/coreflame-phainon/coreflame-phainon.script

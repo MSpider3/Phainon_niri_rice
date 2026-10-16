@@ -25,6 +25,17 @@ Item {
         precision: SystemClock.Minutes
     }
 
+    // Aedes Elysiae: wheat along the foot of the Phainon lock screen
+    CfWheat {
+        visible: Form.phainon
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 6
+        width: parent.width
+        height: 40
+        spacing: 16
+        color: Theme.withAlpha(root.accent, 0.32)
+    }
+
     Item {
         id: sun
         anchors.horizontalCenter: parent.horizontalCenter
@@ -79,6 +90,73 @@ Item {
                 radius: 6
                 rotation: -14 + index * 16
                 color: Theme.withAlpha(Theme.live, 0.5 - index * 0.12)
+            }
+        }
+
+        // The Oronyx dial: a ring with twelve marks and an inscription, turned one step (30°)
+        // each hour. It only moves when the hour changes.
+        Item {
+            id: dial
+            readonly property real size: root.d + 110
+            readonly property string words: {
+                const text = "CYCLE " + Form.cycleText + " · THE EMBERS REFUSE TO SLEEP · ";
+                return Form.reaver ? text.toLowerCase() : text;
+            }
+            anchors.centerIn: parent
+            width: size
+            height: size
+            rotation: (clock.date?.getHours() ?? 0) % 12 * 30
+
+            Behavior on rotation {
+                RotationAnimation {
+                    duration: Motion.still ? 0 : 900
+                    direction: RotationAnimation.Shortest
+                    easing.type: Easing.InOutCubic
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: "transparent"
+                border.width: 1
+                border.color: Theme.withAlpha(root.accent, 0.4)
+            }
+
+            Repeater {
+                model: 12
+
+                Item {
+                    required property int index
+                    anchors.fill: parent
+                    rotation: index * 30
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: index === 0 ? 3 : 1.5
+                        height: index === 0 ? 12 : 7
+                        color: Theme.withAlpha(root.accent, index === 0 ? 0.9 : 0.5)
+                    }
+                }
+            }
+
+            Repeater {
+                model: dial.words.length
+
+                Item {
+                    required property int index
+                    anchors.fill: parent
+                    rotation: 8 + index * 3.1
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 10
+                        text: dial.words[index]
+                        font.family: Form.reaver ? Theme.monoFontFamily : Form.display(Theme.fontFamily)
+                        font.pixelSize: 11
+                        color: Theme.withAlpha(root.ink, 0.55)
+                    }
+                }
             }
         }
 

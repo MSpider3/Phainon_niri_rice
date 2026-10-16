@@ -46,6 +46,7 @@ Singleton {
 
     function registerChrome(item) {
         chromes = chromes.concat([item]);
+        Coreflames.earn("worldbearing");
     }
 
     function unregisterChrome(item) {
@@ -74,6 +75,10 @@ Singleton {
     readonly property string epithet: phainon ? "The Deliverer" : (khaslana ? "Worldbearer" : (reaver ? "of the Deepest Dark" : ""))
     readonly property string quote: phainon ? "Amphoreus will welcome a true dawn." : (khaslana ? "And now, I am the fire at the end of the long night." : (reaver ? "Here we go... again." : ""))
     // What each form says as a new cycle begins
+    // A line in Cyrene's voice for each start, chosen by the boot count. Written for this
+    // rice in her spirit; they are not quotes from the game.
+    readonly property var cyreneLines: ["Even if the world forgets, I'll remember you.", "Every flower that falls blooms again somewhere.", "Go on. I'll be waiting at the end of the road.", "Hold the light a little longer, hero.", "One more dawn. Let's see it together.", "You've carried it all this way. Rest a moment.", "The path loops, but your steps are never the same.", "When you're lost, follow the scent of the wheat fields."]
+    readonly property string cyreneLine: cyreneLines[boots % cyreneLines.length]
     readonly property string greeting: phainon ? "Remember the past, and become the hero of tomorrow." : (khaslana ? "As long as I burn, they'll never truly leave me." : (reaver ? "Climb, fall, climb, fall, climb again." : ""))
 
     Process {
@@ -117,6 +122,11 @@ Singleton {
             "reaver": "Coreflame-Reaver"
         })
     // Only the real session touches system-wide settings; the test sandbox leaves them alone.
+    readonly property var cursors: ({
+            "phainon": "Bibata-Modern-Ice",
+            "khaslana": "Bibata-Modern-Amber",
+            "reaver": "Bibata-Modern-Classic"
+        })
     readonly property bool live: (Quickshell.env("DMS_SHELL_DIR") ?? "") !== ""
 
     // GTK apps need three things to follow a form: the system light/dark preference, a GTK 3
@@ -137,11 +147,46 @@ Singleton {
         const icons = iconThemes[form];
         if (icons && (slotLight ? SettingsData.iconThemeLight : SettingsData.iconThemeDark) !== icons)
             SettingsData.setIconThemeForMode(icons, slotLight);
+        // Terminal: Fastfetch shows this form's portrait, Starship prints the cycle in its colour.
+        const portrait = String(Qt.resolvedUrl("../assets/coreflame/fastfetch/" + form + ".png")).replace("file://", "");
+        Quickshell.execDetached(["ln", "-sfn", portrait, stateDir + "/fastfetch-logo.png"]);
+        // Each form has its own Fastfetch layout; your original is kept in fastfetch-config.jsonc.before.
+        const fetchConfig = String(Qt.resolvedUrl("../assets/coreflame/fastfetch/" + form + ".jsonc")).replace("file://", "");
+        Quickshell.execDetached(["ln", "-sfn", fetchConfig, Quickshell.env("HOME") + "/.config/fastfetch/config.jsonc"]);
+        Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", cycleText, stateDir + "/cycle"]);
+        // btop reads themes/coreflame.theme, which points at this form's colours.
+        const btopTheme = String(Qt.resolvedUrl("../assets/coreflame/btop/" + form + ".theme")).replace("file://", "");
+        Quickshell.execDetached(["sh", "-c", "mkdir -p \"$2\" && ln -sfn \"$1\" \"$2/coreflame.theme\"", "sh", btopTheme, Quickshell.env("HOME") + "/.config/btop/themes"]);
+        // Cursor: Bibata Ice, Amber or Classic, if installed (tools/icons.sh installs them).
+        const cursor = cursors[form];
+        if (cursor && SettingsData.cursorSettings?.theme !== cursor)
+            SettingsData.setCursorTheme(cursor);
+        if (cursor)
+            Quickshell.execDetached(["gsettings", "set", "org.gnome.desktop.interface", "cursor-theme", cursor]);
+        const rgb = ({
+                "phainon": "51;71;134",
+                "khaslana": "212;177;74",
+                "reaver": "122;106;168"
+            })[form] ?? "200;200;200";
+        Quickshell.execDetached(["sh", "-c", "printf '\\033[38;2;%sm✦ [Cycle %s]\\033[0m' \"$1\" \"$2\" > \"$3\"", "sh", rgb, cycleText, stateDir + "/prompt"]);
+    }
+
+    // Sounds (CC0, see assets/coreflame/sounds/CREDITS): one when the form changes, glass when the
+    // battery runs low. Follows DMS's "sounds" switch; silent during the first seconds after start.
+    property bool settled: false
+
+    function playSound(name) {
+        if (!active || !settled || (typeof SettingsData !== "undefined" && !SettingsData.soundsEnabled))
+            return;
+        Quickshell.execDetached(["pw-play", String(Qt.resolvedUrl("../assets/coreflame/sounds/" + name + ".ogg")).replace("file://", "")]);
     }
 
     onFormChanged: {
         applyWallpaper();
         applyDesktop();
+        playSound(form);
+        if (active)
+            Coreflames.sawForm(form);
     }
 
     Timer {
@@ -150,15 +195,18 @@ Singleton {
         onTriggered: {
             root.applyWallpaper();
             root.applyDesktop();
+            root.settled = true;
         }
     }
 
-    // The Dawn Device's five light periods, mapped onto the day.
     // Forms by the hour: each form has a start time and holds until the next one starts.
     // Kept in ~/.config/coreflame/schedule.json; a form picked by hand stays until the next start.
     readonly property string stateDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/coreflame"
     readonly property alias schedule: schedule
     property string lastScheduled: ""
+    property int scheduleTries: 0
+    // Set once the first screen has checked the backend after start-up (see Chrome.qml).
+    property bool startupChecked: false
 
     FileView {
         id: scheduleFile
@@ -203,10 +251,12 @@ Singleton {
         const wanted = scheduledForm(new Date());
         if (wanted === lastScheduled && !force)
             return;
-        if (wanted === form) {
+        if (wanted === form || scheduleTries >= 5) {
             lastScheduled = wanted;
+            scheduleTries = 0;
             return;
         }
+        scheduleTries++;
         // Not marked as done until the form has really changed: just after start-up the
         // form-switch plugin may not be listening yet, and the retry timer asks again.
         Quickshell.execDetached(["dms", "ipc", "call", "form", "set", wanted]);
@@ -226,11 +276,13 @@ Singleton {
             "khaslana": schedule.khaslana,
             "reaver": schedule.reaver
         }, null, 2) + "\n");
-        followSchedule(true);
+        // Not forced: a form picked by hand stays unless the edit moved the current slot.
+        followSchedule(false);
     }
 
     function setStart(name, time) {
-        if (["phainon", "khaslana", "reaver"].indexOf(name) < 0 || !/^\d{1,2}:\d{2}$/.test(time))
+        const m = /^(\d{1,2}):(\d{2})$/.exec(time ?? "");
+        if (["phainon", "khaslana", "reaver"].indexOf(name) < 0 || !m || parseInt(m[1]) > 23 || parseInt(m[2]) > 59)
             return false;
         schedule[name] = String(Math.floor(minutesOf(time) / 60)).padStart(2, "0") + ":" + String(minutesOf(time) % 60).padStart(2, "0");
         saveSchedule();
@@ -239,6 +291,8 @@ Singleton {
 
     function setScheduleEnabled(on) {
         schedule.enabled = on;
+        // Turning it on applies the current slot straight away.
+        lastScheduled = "";
         saveSchedule();
     }
 
@@ -259,6 +313,7 @@ Singleton {
         onTriggered: root.followSchedule(false)
     }
 
+    // The Dawn Device's five light periods, mapped onto the day.
     function dawnPeriod(hour) {
         if (hour < 5 || hour >= 21)
             return "Curtain-Fall Hour";

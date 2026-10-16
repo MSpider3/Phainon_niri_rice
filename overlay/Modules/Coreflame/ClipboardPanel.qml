@@ -49,6 +49,12 @@ PanelWindow {
         return entries[list.currentIndex] ?? null;
     }
 
+    // Destroyed while open (a screen unplugged, another theme picked): release what opening took.
+    Component.onDestruction: {
+        if (shown)
+            shown = false;
+    }
+
     onShownChanged: {
         if (shown) {
             ClipboardService.refCount++;
@@ -168,6 +174,7 @@ PanelWindow {
                             ClipboardService.pasteEntry(entry, () => board.close());
                         else
                             ClipboardService.copyEntry(entry, () => board.close());
+                        Coreflames.earn("trickery");
                     } else if (event.key === Qt.Key_Delete) {
                         ClipboardService.deleteEntry(entry);
                     } else if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)) {
@@ -323,7 +330,7 @@ PanelWindow {
                         const preview = String(ClipboardService.getEntryPreview(row.modelData)).replace(/\s+/g, " ").trim();
                         // The backend describes pictures as "[[ image 491 KiB png 919x986 ]]".
                         const picture = preview.match(/^\[\[\s*image\s+(.+?)\s+(\w+)\s+(\d+)x(\d+)\s*\]\]$/);
-                        const shown = picture ? "Image · " + picture[3] + " × " + picture[4] + " · " + picture[1] : (row.modelData.isImage && preview === "" ? "Image" : preview);
+                        const shown = picture ? board.tx("Image") + " · " + picture[3] + " × " + picture[4] + " · " + picture[1] : (row.modelData.isImage && preview === "" ? board.tx("Image") : preview);
                         return (Form.reaver && row.modelData.pinned ? "* " : "") + shown;
                     }
                     font.pixelSize: Theme.fontSizeMedium
@@ -335,7 +342,10 @@ PanelWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onPositionChanged: list.currentIndex = row.index
-                    onClicked: ClipboardService.copyEntry(row.modelData, () => board.close())
+                    onClicked: {
+                        ClipboardService.copyEntry(row.modelData, () => board.close());
+                        Coreflames.earn("trickery");
+                    }
                 }
             }
         }

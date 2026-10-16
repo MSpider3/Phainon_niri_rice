@@ -52,10 +52,17 @@ PanelWindow {
     function close() {
         shown = false;
         leaveArmed = false;
+        askSsid = "";
+        openList = "";
+        batteryOpen = false;
+        hours.open = false;
     }
 
     function toggle() {
-        shown = !shown;
+        if (shown)
+            close();
+        else
+            shown = true;
     }
 
     function tx(text) {
@@ -97,6 +104,12 @@ PanelWindow {
             easing.type: Form.phainon ? Easing.OutBack : (Form.khaslana ? Easing.InOutCubic : Easing.OutCubic)
             easing.overshoot: 0.6
         }
+    }
+
+    // Destroyed while open (a screen unplugged, another theme picked): release what opening took.
+    Component.onDestruction: {
+        if (shown)
+            shown = false;
     }
 
     onShownChanged: {
@@ -704,7 +717,7 @@ PanelWindow {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: panelWin.tx(hourRow.modelData.label)
                                         font.pixelSize: Theme.fontSizeMedium
-                                        font.weight: Form.scheduledForm(new Date()) === hourRow.modelData.id && Form.schedule.enabled ? Font.Bold : Font.Medium
+                                        font.weight: Form.lastScheduled === hourRow.modelData.id && Form.schedule.enabled ? Font.Bold : Font.Medium
                                         color: Theme.surfaceText
                                     }
 
@@ -1209,6 +1222,14 @@ PanelWindow {
                         onClicked: AudioService.toggleMute()
                     }
 
+                    // Stacked tiles (Flame Reaver): the output list goes between speaker and mic.
+                    Loader {
+                        width: panelWin.tileWidth
+                        active: Form.reaver && panelWin.openList === "output"
+                        visible: active
+                        sourceComponent: listBlock
+                    }
+
                     Tile {
                         width: panelWin.tileWidth
                         icon: AudioService.source?.audio?.muted ? "mic_off" : "mic"
@@ -1221,7 +1242,7 @@ PanelWindow {
 
                 Loader {
                     width: parent.width
-                    active: panelWin.openList === "output"
+                    active: panelWin.openList === "output" && !Form.reaver
                     visible: active
                     sourceComponent: listBlock
                 }
@@ -1270,153 +1291,6 @@ PanelWindow {
                         on: panelWin.batteryOpen || BatteryService.isPluggedIn
                         onClicked: panelWin.batteryOpen = !panelWin.batteryOpen
                     }
-
-                    Tile {
-                        width: panelWin.tileWidth
-                        icon: "coffee"
-                        label: SessionService.idleInhibited ? "Keeping awake" : "Keep awake"
-                        sub: SessionService.idleInhibited ? "Screen stays on" : "Off"
-                        on: SessionService.idleInhibited
-                        onClicked: SessionService.toggleIdleInhibit()
-                    }
-
-                    Tile {
-                        width: panelWin.tileWidth
-                        icon: "content_paste"
-                        label: "Clipboard"
-                        glyph: "trickery"
-                        action: true
-                        sub: "History"
-                        onClicked: {
-                            panelWin.close();
-                            panelWin.ipc("clipboard", "toggle");
-                        }
-                    }
-                }
-
-                }
-
-                // Plugin tiles: every plugin widget that offers a control-centre tile gets one here.
-                Item {
-                    visible: false
-
-                    Repeater {
-                        id: pluginHost
-                        model: panelWin.pluginIds
-
-                        Loader {
-                            required property string modelData
-                            sourceComponent: PluginService.pluginWidgetComponents[modelData] ?? null
-                            onLoaded: {
-                                if ("pluginId" in item)
-                                    item.pluginId = modelData;
-                                if ("pluginService" in item)
-                                    item.pluginService = PluginService;
-                            }
-                        }
-                    }
-                }
-
-                Grid {
-                    id: pluginTiles
-                    readonly property real tileWidth: Form.reaver ? parent.width : (parent.width - 8) / 2
-                    width: parent.width
-                    columns: Form.reaver ? 1 : 2
-                    spacing: 8
-
-                    Repeater {
-                        model: pluginHost.count
-
-                        Tile {
-                            required property int index
-                            readonly property var plugin: pluginHost.itemAt(index)?.item ?? null
-                            readonly property string pluginId: pluginHost.itemAt(index)?.modelData ?? ""
-                            visible: !!plugin && (plugin.ccWidgetPrimaryText ?? "") !== ""
-                            width: pluginTiles.tileWidth
-                            icon: plugin?.ccWidgetIcon || "extension"
-                            label: plugin?.ccWidgetPrimaryText ?? ""
-                            sub: plugin?.ccWidgetSecondaryText ?? ""
-                            on: plugin?.ccWidgetIsActive ?? false
-                            expandable: !!plugin?.ccDetailContent
-                            expanded: panelWin.openList === "plugin:" + pluginId
-                            onExpand: panelWin.toggleList("plugin:" + pluginId)
-                            onClicked: {
-                                if (plugin?.ccWidgetIsToggle ?? true)
-                                    plugin.ccWidgetToggled();
-                                else
-                                    panelWin.toggleList("plugin:" + pluginId);
-                            }
-                        }
-                    }
-                }
-
-                // Plugins that only draw a bar widget (the cat, the network indicator and so on) have no
-                // bar to sit on here, so they live on this shelf. Clicking one runs its own action or
-                // opens its panel below.
-                Column {
-                    visible: shelf.children.length > 1 && shelf.implicitHeight > 0
-                    width: parent.width
-                    spacing: 6
-
-                    Heading {
-                        text: panelWin.tx("PLUGINS")
-                    }
-
-                    Flow {
-                        id: shelf
-                        width: parent.width
-                        spacing: 8
-
-                        Repeater {
-                            model: pluginHost.count
-
-                            Item {
-                                id: shelfItem
-                                required property int index
-                                readonly property var plugin: pluginHost.itemAt(index)?.item ?? null
-                                readonly property string pluginId: pluginHost.itemAt(index)?.modelData ?? ""
-                                readonly property bool shown: !!plugin && (plugin.ccWidgetPrimaryText ?? "") === "" && !!plugin.horizontalBarPill
-                                visible: shown
-                                width: shown ? Math.max(40, pillLoader.implicitWidth + 24) : 0
-                                height: shown ? 38 : 0
-
-                                CfSurface {
-                                    anchors.fill: parent
-                                    color: shelfMouse.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
-                                    edgeColor: Theme.withAlpha(Theme.outline, Form.khaslana ? 0.9 : 0.45)
-                                    edgeWidth: Form.reaver ? 0 : 1
-                                    radius: 19
-                                    cut: 6
-                                }
-
-                                MouseArea {
-                                    id: shelfMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (typeof shelfItem.plugin.pillClickAction === "function")
-                                            shelfItem.plugin.pillClickAction();
-                                        else if (shelfItem.plugin.popoutContent)
-                                            panelWin.toggleList("plugin:" + shelfItem.pluginId);
-                                    }
-                                }
-
-                                Loader {
-                                    id: pillLoader
-                                    anchors.centerIn: parent
-                                    sourceComponent: shelfItem.shown ? shelfItem.plugin.horizontalBarPill : null
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Loader {
-                    width: parent.width
-                    active: panelWin.openList.startsWith("plugin:")
-                    visible: active
-                    sourceComponent: listBlock
                 }
 
                 // Battery: the full reading, and the power profile
@@ -1582,6 +1456,159 @@ PanelWindow {
                     }
                 }
 
+                Grid {
+                    width: parent.width
+                    columns: Form.reaver ? 1 : 2
+                    spacing: 8
+
+                    Tile {
+                        width: panelWin.tileWidth
+                        icon: "coffee"
+                        label: SessionService.idleInhibited ? "Keeping awake" : "Keep awake"
+                        sub: SessionService.idleInhibited ? "Screen stays on" : "Off"
+                        on: SessionService.idleInhibited
+                        onClicked: SessionService.toggleIdleInhibit()
+                    }
+
+                    Tile {
+                        width: panelWin.tileWidth
+                        icon: "content_paste"
+                        label: "Clipboard"
+                        glyph: "trickery"
+                        action: true
+                        sub: "History"
+                        onClicked: {
+                            panelWin.close();
+                            panelWin.ipc("clipboard", "toggle");
+                        }
+                    }
+                }
+
+                }
+
+                // Plugin tiles: every plugin widget that offers a control-centre tile gets one here.
+                Item {
+                    visible: false
+
+                    Repeater {
+                        id: pluginHost
+                        model: panelWin.pluginIds
+
+                        Loader {
+                            required property string modelData
+                            sourceComponent: PluginService.pluginWidgetComponents[modelData] ?? null
+                            onLoaded: {
+                                if ("pluginId" in item)
+                                    item.pluginId = modelData;
+                                if ("pluginService" in item)
+                                    item.pluginService = PluginService;
+                            }
+                        }
+                    }
+                }
+
+                Grid {
+                    id: pluginTiles
+                    readonly property real tileWidth: Form.reaver ? parent.width : (parent.width - 8) / 2
+                    width: parent.width
+                    columns: Form.reaver ? 1 : 2
+                    spacing: 8
+
+                    Repeater {
+                        model: pluginHost.count
+
+                        Tile {
+                            required property int index
+                            readonly property var plugin: pluginHost.itemAt(index)?.item ?? null
+                            readonly property string pluginId: pluginHost.itemAt(index)?.modelData ?? ""
+                            visible: !!plugin && (plugin.ccWidgetPrimaryText ?? "") !== ""
+                            width: pluginTiles.tileWidth
+                            icon: plugin?.ccWidgetIcon || "extension"
+                            label: plugin?.ccWidgetPrimaryText ?? ""
+                            sub: plugin?.ccWidgetSecondaryText ?? ""
+                            on: plugin?.ccWidgetIsActive ?? false
+                            expandable: !!plugin?.ccDetailContent
+                            expanded: panelWin.openList === "plugin:" + pluginId
+                            onExpand: panelWin.toggleList("plugin:" + pluginId)
+                            onClicked: {
+                                if (plugin?.ccWidgetIsToggle ?? true)
+                                    plugin.ccWidgetToggled();
+                                else
+                                    panelWin.toggleList("plugin:" + pluginId);
+                            }
+                        }
+                    }
+                }
+
+                // Plugins that only draw a bar widget (the cat, the network indicator and so on) have no
+                // bar to sit on here, so they live on this shelf. Clicking one runs its own action or
+                // opens its panel below.
+                Column {
+                    visible: shelf.children.length > 1 && shelf.implicitHeight > 0
+                    width: parent.width
+                    spacing: 6
+
+                    Heading {
+                        text: panelWin.tx("PLUGINS")
+                    }
+
+                    Flow {
+                        id: shelf
+                        width: parent.width
+                        spacing: 8
+
+                        Repeater {
+                            model: pluginHost.count
+
+                            Item {
+                                id: shelfItem
+                                required property int index
+                                readonly property var plugin: pluginHost.itemAt(index)?.item ?? null
+                                readonly property string pluginId: pluginHost.itemAt(index)?.modelData ?? ""
+                                readonly property bool shown: !!plugin && (plugin.ccWidgetPrimaryText ?? "") === "" && !!plugin.horizontalBarPill
+                                visible: shown
+                                width: shown ? Math.max(40, pillLoader.implicitWidth + 24) : 0
+                                height: shown ? 38 : 0
+
+                                CfSurface {
+                                    anchors.fill: parent
+                                    color: shelfMouse.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
+                                    edgeColor: Theme.withAlpha(Theme.outline, Form.khaslana ? 0.9 : 0.45)
+                                    edgeWidth: Form.reaver ? 0 : 1
+                                    radius: 19
+                                    cut: 6
+                                }
+
+                                MouseArea {
+                                    id: shelfMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (typeof shelfItem.plugin.pillClickAction === "function")
+                                            shelfItem.plugin.pillClickAction();
+                                        else if (shelfItem.plugin.popoutContent)
+                                            panelWin.toggleList("plugin:" + shelfItem.pluginId);
+                                    }
+                                }
+
+                                Loader {
+                                    id: pillLoader
+                                    anchors.centerIn: parent
+                                    sourceComponent: shelfItem.shown ? shelfItem.plugin.horizontalBarPill : null
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Loader {
+                    width: parent.width
+                    active: panelWin.openList.startsWith("plugin:")
+                    visible: active
+                    sourceComponent: listBlock
+                }
+
                 // Readings
                 Item {
                     width: parent.width
@@ -1616,21 +1643,33 @@ PanelWindow {
                             ]
 
                             Row {
+                                id: reading
                                 required property var modelData
+                                // The Black Tide reaches memory past 85 %
+                                readonly property bool flooded: modelData.icon === "developer_board" && (DgopService.memoryUsage || 0) >= 85
                                 spacing: 5
 
                                 DankIcon {
                                     anchors.verticalCenter: parent.verticalCenter
                                     name: modelData.icon
                                     size: 17
-                                    color: Theme.primary
+                                    color: reading.flooded ? Theme.live : Theme.primary
                                 }
 
                                 StyledText {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.text
+                                    text: modelData.text + (reading.flooded ? panelWin.tx(" · Black Tide") : "")
                                     font.pixelSize: Theme.fontSizeMedium
-                                    color: Theme.surfaceText
+                                    font.weight: reading.flooded ? Font.Bold : Font.Normal
+                                    color: reading.flooded ? Theme.live : Theme.surfaceText
+
+                                    Rectangle {
+                                        z: -1
+                                        visible: reading.flooded
+                                        anchors.fill: parent
+                                        anchors.margins: -4
+                                        color: "#C005030C"
+                                    }
                                 }
                             }
                         }
@@ -1648,14 +1687,11 @@ PanelWindow {
                         text: panelWin.tx("PYRIC CORPUS")
                     }
 
-                    CfPips {
+                    CfBrazier {
                         anchors.verticalCenter: parent.verticalCenter
                         level: BatteryService.batteryLevel
                         charging: BatteryService.isCharging || BatteryService.isPluggedIn
-                        low: BatteryService.isLowBattery && !BatteryService.isCharging
-                        pipHeight: 12
-                        litColor: low ? Theme.error : (charging ? Theme.primary : Theme.surfaceText)
-                        dimColor: Theme.withAlpha(Theme.surfaceText, 0.25)
+                        low: BatteryService.batteryLevel < 20 && !charging
                     }
 
                     StyledText {

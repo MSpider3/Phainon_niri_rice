@@ -53,6 +53,7 @@ PanelWindow {
         selected = 0;
         armed = -1;
         shown = true;
+        Coreflames.earn("death");
     }
 
     function close() {
@@ -240,7 +241,7 @@ PanelWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: Form.reaver ? "arrows to move · enter to choose · esc to close" : "Arrows to move · Enter to choose · Esc to close"
                 font.pixelSize: Theme.fontSizeSmall
-                color: Theme.withAlpha(Theme.surfaceText, 0.45)
+                color: Theme.withAlpha(Theme.surfaceText, 0.75)
             }
         }
     }

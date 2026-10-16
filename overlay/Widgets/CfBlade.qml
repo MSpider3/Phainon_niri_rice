@@ -11,6 +11,9 @@ Item {
     // A read-only meter: no guard, no crossguard, nothing that looks draggable.
     property bool meter: false
     property color tone: Theme.primary
+    // The Black Tide: for memory and disk meters. Past 85 % a dark band creeps over the level.
+    property bool tide: false
+    readonly property bool flooding: tide && value >= 0.85
     signal moved(real to)
 
     implicitHeight: 14
@@ -29,6 +32,29 @@ Item {
             width: Math.round(parent.width * Math.max(0, Math.min(1, blade.value)))
             height: Form.active ? 2 : parent.height
             color: blade.tone
+        }
+
+        Rectangle {
+            visible: blade.flooding
+            anchors.verticalCenter: parent.verticalCenter
+            x: Math.round(parent.width * 0.85)
+            width: Math.max(0, Math.round(parent.width * (Math.min(1, blade.value) - 0.85)))
+            height: parent.height + 4
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop {
+                    position: 0
+                    color: "transparent"
+                }
+                GradientStop {
+                    position: 0.35
+                    color: "#E6050510"
+                }
+                GradientStop {
+                    position: 1
+                    color: "#FF05030C"
+                }
+            }
         }
 
         // The point of the blade

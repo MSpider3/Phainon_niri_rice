@@ -31,6 +31,7 @@ PanelWindow {
     function open() {
         if (NiriService.inOverview)
             NiriService.closeOverview();
+        Coreflames.earn("law");
         selected = 0;
         armed = -1;
         shown = true;
@@ -78,6 +79,12 @@ PanelWindow {
         }
         armed = -1;
         Quickshell.execDetached(["kill", String(proc.pid)]);
+    }
+
+    // Destroyed while open (a screen unplugged, another theme picked): release what opening took.
+    Component.onDestruction: {
+        if (shown)
+            shown = false;
     }
 
     onShownChanged: {
@@ -252,6 +259,7 @@ PanelWindow {
                         width: parent.width - 64 - 50 - 20
                         value: modelData.value
                         tone: modelData.alarm ? Theme.error : Theme.primary
+                        tide: modelData.name === "Memory"
                     }
 
                     StyledText {

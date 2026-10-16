@@ -11,15 +11,19 @@ Item {
     implicitWidth: size
     implicitHeight: size
 
-    onVisibleChanged: Chimera.watchers += visible ? 1 : -1
-    Component.onCompleted: {
-        if (visible)
-            Chimera.watchers++;
+    // Counted at most once, so show/hide and teardown can never unbalance the shared count.
+    property bool counted: false
+
+    function count(on) {
+        if (on === counted)
+            return;
+        counted = on;
+        Chimera.watchers += on ? 1 : -1;
     }
-    Component.onDestruction: {
-        if (visible)
-            Chimera.watchers--;
-    }
+
+    onVisibleChanged: count(visible)
+    Component.onCompleted: count(visible)
+    Component.onDestruction: count(false)
 
     Image {
         anchors.fill: parent

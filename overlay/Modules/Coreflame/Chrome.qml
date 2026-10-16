@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
@@ -109,8 +110,9 @@ PanelWindow {
     // DMS backend half a minute after starting, hand back to stock DMS.
     Timer {
         interval: 30000
-        running: (Quickshell.env("DMS_SHELL_DIR") ?? "") !== ""
+        running: (Quickshell.env("DMS_SHELL_DIR") ?? "") !== "" && !Form.startupChecked
         onTriggered: {
+            Form.startupChecked = true;
             if (!DMSService.isConnected)
                 Quickshell.execDetached(["systemctl", "--user", "start", "coreflame-fallback.service"]);
         }
@@ -124,6 +126,68 @@ PanelWindow {
             targetScreen: win.screen
             onFinished: transformLoader.active = false
         }
+    }
+
+    // The Flame-Chase: the events only this shell can see. The first screen reports them.
+    readonly property bool lead: Form.chromes[0] === win
+    readonly property bool fullCharge: BatteryService.batteryAvailable && BatteryService.isPluggedIn && BatteryService.batteryLevel >= 100
+    onFullChargeChanged: {
+        if (fullCharge && lead)
+            Coreflames.earn("earth");
+    }
+
+    FileView {
+        id: uptimeFile
+        path: "/proc/uptime"
+        blockLoading: true
+        printErrors: false
+    }
+
+    Connections {
+        target: clock
+        enabled: win.lead && !Coreflames.has("time")
+
+        function onDateChanged() {
+            uptimeFile.reload();
+            if (parseFloat(uptimeFile.text()) >= 6 * 3600)
+                Coreflames.earn("time");
+        }
+    }
+
+    // Irontomb warnings: the battery nearly out, or the CPU close to its limit. A red-on-black
+    // island alert and breaking glass, at most once every ten minutes.
+    readonly property bool batteryCritical: BatteryService.batteryAvailable && !BatteryService.isPluggedIn && BatteryService.batteryLevel <= 5
+    readonly property bool overheated: Chimera.temp >= 97
+    property real lastIrontomb: 0
+    onBatteryCriticalChanged: {
+        if (batteryCritical)
+            irontomb("Battery " + Math.round(BatteryService.batteryLevel) + "%", "The Coreflame is guttering");
+    }
+    onOverheatedChanged: {
+        if (overheated)
+            irontomb("CPU " + Math.round(Chimera.temp) + "°", "Irontomb stirs: let it cool");
+    }
+
+    function irontomb(title, sub) {
+        // Not marked as shown until the island can actually show it (it is not ready for the
+        // first seconds after start), so a warning at login is not lost.
+        if (!lead || !island.ready || Date.now() - lastIrontomb < 600000)
+            return;
+        lastIrontomb = Date.now();
+        island.announce({
+            "icon": "warning",
+            "title": "IRONTOMB · " + title,
+            "sub": sub,
+            "tone": "irontomb"
+        }, 6000);
+        Form.playSound("low-battery");
+    }
+
+    // Breaking glass once, as the battery drops under 20 % off the charger (first screen only).
+    readonly property bool lowBattery: BatteryService.batteryAvailable && BatteryService.batteryLevel < 20 && !BatteryService.isPluggedIn
+    onLowBatteryChanged: {
+        if (lowBattery && Form.chromes[0] === win)
+            Form.playSound("low-battery");
     }
 
     function playTransformation() {
@@ -259,27 +323,106 @@ PanelWindow {
                 Repeater {
                     model: leftCorner.workspaces
 
+                    // Workspace marks, one language per form: orbital rings for Phainon (the
+                    // current one full and lit, the others broken), Roman numerals for Khaslana,
+                    // tally scratches for the Flame Reaver. Stock pills when no form is active.
                     Item {
                         id: ws
                         required property var modelData
                         readonly property bool current: modelData.is_active
-                        width: mark.width
+                        readonly property bool occupied: modelData.active_window_id != null
+                        readonly property int number: modelData.idx
+                        readonly property color ink: current ? Theme.primary : Theme.withAlpha(Theme.surfaceText, occupied ? 0.7 : 0.32)
+                        width: Form.phainon ? 16 : (Form.khaslana ? numeral.implicitWidth : (Form.reaver ? tally.implicitWidth : mark.width))
                         height: 18
 
                         Rectangle {
                             id: mark
+                            visible: !Form.active
                             anchors.centerIn: parent
                             width: ws.current ? 24 : 8
                             height: 8
-                            radius: (Form.phainon || !Form.active) ? 4 : 0
-                            rotation: (Form.khaslana && !ws.current) ? 45 : 0
-                            color: ws.current ? Theme.primary : Theme.withAlpha(Theme.surfaceText, ws.modelData.active_window_id != null ? 0.7 : 0.28)
+                            radius: 4
+                            color: ws.ink
 
                             Behavior on width {
                                 NumberAnimation {
                                     duration: Theme.shortDuration
                                     easing.type: Easing.OutCubic
                                 }
+                            }
+                        }
+
+                        Shape {
+                            visible: Form.phainon
+                            anchors.centerIn: parent
+                            width: 16
+                            height: 16
+                            preferredRendererType: Shape.CurveRenderer
+
+                            ShapePath {
+                                strokeColor: ws.ink
+                                strokeWidth: ws.current ? 1.8 : 1.4
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+
+                                PathAngleArc {
+                                    centerX: 8
+                                    centerY: 8
+                                    radiusX: 6.5
+                                    radiusY: 6.5
+                                    startAngle: -60
+                                    sweepAngle: ws.current ? 360 : 290
+                                }
+                            }
+
+                            Rectangle {
+                                visible: ws.current || ws.occupied
+                                anchors.centerIn: parent
+                                width: ws.current ? 6 : 3
+                                height: width
+                                radius: width / 2
+                                color: ws.current ? Theme.secondary : ws.ink
+                            }
+                        }
+
+                        StyledText {
+                            id: numeral
+                            visible: Form.khaslana
+                            anchors.centerIn: parent
+                            readonly property var numerals: ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
+                            text: numerals[ws.number] ?? String(ws.number)
+                            font.family: Form.display(Theme.fontFamily)
+                            font.pixelSize: Theme.fontSizeMedium
+                            font.weight: ws.current ? Font.Bold : Font.Medium
+                            color: ws.ink
+                        }
+
+                        Row {
+                            id: tally
+                            visible: Form.reaver
+                            anchors.centerIn: parent
+                            spacing: 3
+
+                            Repeater {
+                                model: Math.floor(ws.number / 5)
+
+                                Text {
+                                    text: "||||"
+                                    font.family: Theme.monoFontFamily
+                                    font.pixelSize: Theme.fontSizeMedium
+                                    font.strikeout: true
+                                    color: ws.ink
+                                }
+                            }
+
+                            Text {
+                                visible: ws.number % 5 > 0
+                                text: "|".repeat(ws.number % 5)
+                                font.family: Theme.monoFontFamily
+                                font.pixelSize: Theme.fontSizeMedium
+                                font.weight: ws.current ? Font.Bold : Font.Normal
+                                color: ws.ink
                             }
                         }
 
@@ -327,7 +470,15 @@ PanelWindow {
 
         // The newest incoming notification takes the island over until it times out or is clicked.
         readonly property var toast: NotificationService.popups.length > 0 ? NotificationService.popups[NotificationService.popups.length - 1] : null
-        onToastChanged: toastTimer.restart()
+        onToastChanged: {
+            toastTimer.restart();
+            if (toast && win.lead)
+                Coreflames.earn("romance");
+        }
+        onPlayingChanged: {
+            if (playing && win.lead)
+                Coreflames.earn("ocean");
+        }
         readonly property bool peek: islandHover.hovered && !busy && !!player
         property int recSeconds: 0
         // A screen cast alone is only sharing (a meeting, OBS preview). It counts as a recording
@@ -372,7 +523,11 @@ PanelWindow {
             running: true
             onTriggered: {
                 island.ready = true;
-                if (!Form.active)
+                if (win.batteryCritical)
+                    win.irontomb("Battery " + Math.round(BatteryService.batteryLevel) + "%", "The Coreflame is guttering");
+                else if (win.overheated)
+                    win.irontomb("CPU " + Math.round(Chimera.temp) + "°", "Irontomb stirs: let it cool");
+                if (!Form.active || island.activity)
                     return;
                 island.announce({
                     "icon": "all_inclusive",
@@ -380,6 +535,17 @@ PanelWindow {
                     "sub": Form.greeting
                 }, 6000);
             }
+        }
+
+        // Then Cyrene's line for this start, once the greeting has gone
+        Timer {
+            interval: 9500
+            running: Form.active
+            onTriggered: island.announce({
+                "icon": "local_florist",
+                "title": "Cyrene",
+                "sub": Form.cyreneLine
+            }, 6000)
         }
 
         Timer {
@@ -523,6 +689,19 @@ PanelWindow {
         }
 
         Connections {
+            target: Coreflames
+            enabled: win.lead
+
+            function onGathered(name) {
+                island.announce({
+                    "icon": "local_fire_department",
+                    "title": "Coreflame of " + Coreflames.titans[name][0],
+                    "sub": "Flame-Chase " + Coreflames.count + " / 12"
+                }, 3200);
+            }
+        }
+
+        Connections {
             target: Form
 
             function onFormChanged() {
@@ -540,6 +719,17 @@ PanelWindow {
         CfTab {
             anchors.fill: parent
             side: "center"
+        }
+
+        // Irontomb: a critical alert darkens the island to black under red text
+        Rectangle {
+            visible: island.busy && island.activity?.tone === "irontomb"
+            anchors.fill: parent
+            anchors.margins: 3
+            radius: Form.phainon || !Form.active ? height / 2 : 0
+            color: "#F2080305"
+            border.width: 1
+            border.color: Theme.error
         }
 
         HoverHandler {
@@ -900,7 +1090,8 @@ PanelWindow {
             height: win.strip
             spacing: 10
 
-            readonly property color tone: island.activity?.tone === "error" ? Theme.error : Theme.primary
+            readonly property bool irontomb: island.activity?.tone === "irontomb"
+            readonly property color tone: irontomb ? "#FF6B5E" : (island.activity?.tone === "error" ? Theme.error : Theme.primary)
 
             DankIcon {
                 anchors.verticalCenter: parent.verticalCenter
@@ -957,7 +1148,7 @@ PanelWindow {
                 }
                 font.pixelSize: Theme.fontSizeMedium
                 font.weight: Font.DemiBold
-                color: Theme.surfaceText
+                color: activityRow.irontomb ? "#FF6B5E" : Theme.surfaceText
             }
 
             StyledText {
@@ -972,7 +1163,7 @@ PanelWindow {
                     return Form.reaver ? t.toLowerCase() : t;
                 }
                 font.pixelSize: Theme.fontSizeMedium
-                color: Theme.withAlpha(Theme.surfaceText, 0.65)
+                color: activityRow.irontomb ? "#D9C2BE" : Theme.withAlpha(Theme.surfaceText, 0.65)
             }
         }
 
@@ -989,6 +1180,18 @@ PanelWindow {
                 name: "notifications_active"
                 size: 20
                 color: Theme.primary
+            }
+
+            // A line of lore in front of every notification: a decree, a recurrence notice,
+            // or a log line from the cycle.
+            StyledText {
+                visible: Form.active
+                anchors.verticalCenter: parent.verticalCenter
+                text: Form.phainon ? "DECREE" : (Form.khaslana ? "[ RECURRENCE NOTICE ]" : "// signal caught in cycle " + Form.cycleText)
+                font.family: Form.phainon ? Form.display(Theme.fontFamily) : Theme.monoFontFamily
+                font.pixelSize: Theme.fontSizeSmall
+                font.letterSpacing: Form.phainon ? 1.5 : 0
+                color: Form.reaver ? Theme.withAlpha(Theme.surfaceText, 0.45) : Theme.secondary
             }
 
             StyledText {

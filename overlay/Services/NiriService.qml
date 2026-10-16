@@ -7,6 +7,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Common
 import qs.Services
+import "CoreflameNiri.js" as CoreflameNiri
 
 Singleton {
     id: root
@@ -1243,7 +1244,11 @@ window-rule {
         const layoutLines = [];
         if (manageGaps)
             layoutLines.push(`    gaps ${gaps}`, "");
-        layoutLines.push("    border {", `        width ${borderSize}`, "    }", "", "    focus-ring {", `        width ${borderSize}`, "    }");
+        layoutLines.push("    border {", `        width ${borderSize}`, "    }", "");
+        if (Form.active)
+            layoutLines.push(CoreflameNiri.focusRing[Form.form] ?? "");
+        else
+            layoutLines.push("    focus-ring {", `        width ${borderSize}`, "    }");
 
         const configContent = dmsWarning + `layout {
 ${layoutLines.join("\n")}
@@ -1254,7 +1259,7 @@ window-rule {
     clip-to-geometry true
     tiled-state true
     draw-border-with-background false
-}` + xrayRules;
+}` + xrayRules + (Form.active ? "\n\n" + CoreflameNiri.animations(Form.form) : "");
 
         const alttabContent = dmsWarning + `recent-windows {
     highlight {
