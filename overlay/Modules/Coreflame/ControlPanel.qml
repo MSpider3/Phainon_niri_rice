@@ -1001,7 +1001,7 @@ PanelWindow {
                             Heading {
                                 x: 8
                                 bottomPadding: 4
-                                text: panelWin.tx(panelWin.openList === "wifi" ? "PASSAGE · WI-FI NETWORKS" : (panelWin.openList === "bluetooth" ? "PASSAGE · BLUETOOTH DEVICES" : (panelWin.openList === "output" ? "OCEAN · SOUND OUTPUT" : "PLUGIN")))
+                                text: panelWin.tx(panelWin.openList === "wifi" ? "PASSAGE · WI-FI NETWORKS" : (panelWin.openList === "bluetooth" ? "PASSAGE · BLUETOOTH DEVICES" : (panelWin.openList === "output" ? "OCEAN · SOUND OUTPUT" : (panelWin.openList === "input" ? "OCEAN · MICROPHONE" : "PLUGIN"))))
                             }
 
                             // Wi-Fi
@@ -1130,6 +1130,21 @@ PanelWindow {
                                 }
                             }
 
+                            // Microphones: pick which one apps record from
+                            Repeater {
+                                model: panelWin.openList === "input" ? Pipewire.nodes.values.filter(node => node.audio && !node.isSink && !node.isStream) : []
+
+                                ListRow {
+                                    required property var modelData
+                                    width: listColumn.width
+                                    icon: "mic"
+                                    label: AudioService.displayName(modelData)
+                                    note: modelData === AudioService.source ? "In use" : ""
+                                    current: modelData === AudioService.source
+                                    onClicked: Pipewire.preferredDefaultAudioSource = modelData
+                                }
+                            }
+
                             // A plugin's own detail page
                             Loader {
                                 readonly property string wanted: panelWin.openList.startsWith("plugin:") ? panelWin.openList.substring(7) : ""
@@ -1236,13 +1251,24 @@ PanelWindow {
                         label: AudioService.source ? AudioService.displayName(AudioService.source) : "No microphone"
                         sub: AudioService.source?.audio?.muted ? "Muted" : Math.round((AudioService.source?.audio?.volume ?? 0) * 100) + "%"
                         on: !!AudioService.source?.audio && !AudioService.source.audio.muted
+                        expandable: true
+                        expanded: panelWin.openList === "input"
+                        onExpand: panelWin.toggleList("input")
                         onClicked: AudioService.toggleMicMute()
+                    }
+
+                    // Stacked tiles (Flame Reaver): the microphone list goes right under the mic.
+                    Loader {
+                        width: panelWin.tileWidth
+                        active: Form.reaver && panelWin.openList === "input"
+                        visible: active
+                        sourceComponent: listBlock
                     }
                 }
 
                 Loader {
                     width: parent.width
-                    active: panelWin.openList === "output" && !Form.reaver
+                    active: (panelWin.openList === "output" || panelWin.openList === "input") && !Form.reaver
                     visible: active
                     sourceComponent: listBlock
                 }
