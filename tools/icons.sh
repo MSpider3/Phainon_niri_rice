@@ -88,4 +88,12 @@ for variant in Bibata-Modern-Ice Bibata-Modern-Amber Bibata-Modern-Classic; do
     fi
 done
 
+# GTK theme the forms set (adw-gtk3 / adw-gtk3-dark, github.com/lassekongo83/adw-gtk3, LGPL-2.1).
+# Without it GTK3 apps fall back to plain light Adwaita and DMS skips its live GTK refresh.
+themes="${XDG_DATA_HOME:-$HOME/.local/share}/themes"
+if [ ! -d "$themes/adw-gtk3" ] && [ ! -d /usr/share/themes/adw-gtk3 ]; then
+    mkdir -p "$themes"
+    curl -sL "https://github.com/lassekongo83/adw-gtk3/releases/download/v6.5/adw-gtk3v6.5.tar.xz" | tar -xJ -C "$themes"
+fi
+
 echo "Icon and cursor themes ready. The forms pick them up on the next form change or shell start."
