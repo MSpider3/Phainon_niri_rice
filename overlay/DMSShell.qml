@@ -1205,13 +1205,15 @@ Item {
                 }
 
                 Variants {
-                    model: SettingsData.getFilteredScreens("osd")
+                    // Coreflame: the island shows track changes and volume itself
+                    model: Form.chrome ? [] : SettingsData.getFilteredScreens("osd")
 
                     delegate: MediaVolumeOSD {}
                 }
 
                 Variants {
-                    model: SettingsData.getFilteredScreens("osd")
+                    // Coreflame: the island shows track changes and volume itself
+                    model: Form.chrome ? [] : SettingsData.getFilteredScreens("osd")
 
                     delegate: MediaPlaybackOSD {}
                 }

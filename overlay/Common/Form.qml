@@ -257,6 +257,7 @@ Singleton {
             return;
         }
         scheduleTries++;
+        console.info("Coreflame schedule: switching to", wanted, "(try " + scheduleTries + ")");
         // Not marked as done until the form has really changed: just after start-up the
         // form-switch plugin may not be listening yet, and the retry timer asks again.
         Quickshell.execDetached(["dms", "ipc", "call", "form", "set", wanted]);
@@ -290,6 +291,7 @@ Singleton {
     }
 
     function setScheduleEnabled(on) {
+        console.info("Coreflame schedule: turned", on ? "on" : "off");
         schedule.enabled = on;
         // Turning it on applies the current slot straight away.
         lastScheduled = "";

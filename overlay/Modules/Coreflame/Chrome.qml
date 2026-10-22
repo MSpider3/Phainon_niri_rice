@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import Quickshell.Io
 import Quickshell.Widgets
 import Quickshell.Services.Mpris
+import Quickshell.Services.Notifications
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -26,7 +27,11 @@ PanelWindow {
 
     screen: modelData
     WlrLayershell.namespace: "coreflame:chrome"
-    WlrLayershell.layer: WlrLayer.Top
+    // Over a fullscreen app the chrome is hidden, except that the island rises above it for a
+    // moment to show volume, brightness or a critical notification, then sinks back.
+    readonly property bool fullscreenShowing: (ToplevelManager.toplevels?.values ?? []).some(t => t.fullscreen && t.activated)
+    readonly property bool raised: fullscreenShowing && (island.busy || island.toast?.urgency === NotificationUrgency.Critical)
+    WlrLayershell.layer: raised ? WlrLayer.Overlay : WlrLayer.Top
     anchors {
         top: true
         left: true
@@ -197,6 +202,11 @@ PanelWindow {
         transformLoader.item?.play();
     }
 
+    // The bottom-edge dock for this screen's current workspace
+    EdgeDock {
+        targetScreen: win.screen
+    }
+
     LazyLoader {
         id: launcherLoader
 
@@ -297,6 +307,7 @@ PanelWindow {
     // ── left corner: workspaces and the app in focus ──
     Item {
         id: leftCorner
+        visible: !win.raised
 
         readonly property var workspaces: NiriService.allWorkspaces.filter(w => w.output === win.screen.name).sort((a, b) => a.idx - b.idx)
         readonly property var focusedWindow: NiriService.windows.find(w => w.is_focused) ?? null
@@ -1260,6 +1271,7 @@ PanelWindow {
     // ── right corner: network, bluetooth, sound, battery; opens the control centre ──
     Item {
         id: rightCorner
+        visible: !win.raised
 
         readonly property string section: "right"
 
