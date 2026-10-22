@@ -177,7 +177,7 @@ Item {
         function toggle() {
             // Coreflame has its own session menu.
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerPowerMenu();
+                root.getPreferredBar().triggerPowerMenu();
                 return "POWERMENU_TOGGLE_SUCCESS";
             }
             root.powerMenuModalLoader.active = true;
@@ -198,7 +198,7 @@ Item {
     IpcHandler {
         function open(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerProcesses("open");
+                root.getPreferredBar().triggerProcesses("open");
                 return "PROCESSLIST_OPEN_SUCCESS";
             }
             root.processListModalLoader.active = true;
@@ -212,7 +212,7 @@ Item {
 
         function close(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerProcesses("close");
+                root.getPreferredBar().triggerProcesses("close");
                 return "PROCESSLIST_CLOSE_SUCCESS";
             }
             if (root.processListModalLoader.item)
@@ -223,7 +223,7 @@ Item {
 
         function toggle(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerProcesses("toggle");
+                root.getPreferredBar().triggerProcesses("toggle");
                 return "PROCESSLIST_TOGGLE_SUCCESS";
             }
             root.processListModalLoader.active = true;
@@ -237,7 +237,7 @@ Item {
 
         function focusOrToggle(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerProcesses("toggle");
+                root.getPreferredBar().triggerProcesses("toggle");
                 return "PROCESSLIST_FOCUS_OR_TOGGLE_SUCCESS";
             }
             root.processListModalLoader.active = true;
@@ -258,13 +258,18 @@ Item {
                 return "CONTROL_CENTER_OPEN_SUCCESS";
             const bar = root.getPreferredBar("controlCenterButtonRef");
             if (bar) {
-                bar.triggerControlCenter();
+                bar.triggerControlCenter("open");
                 return "CONTROL_CENTER_OPEN_SUCCESS";
             }
             return "CONTROL_CENTER_OPEN_FAILED";
         }
 
         function hide(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                for (const c of Form.chromes)
+                    c.triggerControlCenter("close");
+                return "CONTROL_CENTER_HIDE_SUCCESS";
+            }
             if (PopoutService.closeIslandActivity("controlcenter"))
                 return "CONTROL_CENTER_HIDE_SUCCESS";
             if (root.controlCenterLoader.item && root.controlCenterLoader.item.shouldBeVisible) {
@@ -374,7 +379,7 @@ Item {
                 return true;
             }
 
-            return bar.triggerDashTab(tabId, position);
+            return bar.triggerDashTab(tabId, position, "open");
         }
 
         function _toggleDash(tab, position) {
@@ -414,6 +419,11 @@ Item {
         }
 
         function close(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                for (const c of Form.chromes)
+                    c.triggerDashTab("overview", "", "close");
+                return "DASH_CLOSE_SUCCESS";
+            }
             if (PopoutService.closeIslandActivity("home") || PopoutService.closeIslandActivity("media") || PopoutService.closeIslandActivity("wallpaper") || PopoutService.closeIslandActivity("weather"))
                 return "DASH_CLOSE_SUCCESS";
             if (root.dankDashPopoutLoader.item) {
@@ -1513,7 +1523,7 @@ Item {
     IpcHandler {
         function open(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerClipboard("open");
+                root.getPreferredBar().triggerClipboard("open");
                 return "CLIPBOARD_OPEN_SUCCESS";
             }
             if (!PopoutService.clipboardHistoryModal) {
@@ -1525,7 +1535,7 @@ Item {
 
         function close(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerClipboard("close");
+                root.getPreferredBar().triggerClipboard("close");
                 return "CLIPBOARD_CLOSE_SUCCESS";
             }
             if (!PopoutService.clipboardHistoryModal) {
@@ -1537,7 +1547,7 @@ Item {
 
         function toggle(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerClipboard("toggle");
+                root.getPreferredBar().triggerClipboard("toggle");
                 return "CLIPBOARD_TOGGLE_SUCCESS";
             }
             if (!PopoutService.clipboardHistoryModal) {
@@ -1598,7 +1608,7 @@ Item {
     IpcHandler {
         function open(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerLauncher("open");
+                root.getPreferredBar().triggerLauncher("open");
                 return "SPOTLIGHT_OPEN_SUCCESS";
             }
             PopoutService.openDankLauncherV2();
@@ -1607,7 +1617,7 @@ Item {
 
         function close(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerLauncher("close");
+                root.getPreferredBar().triggerLauncher("close");
                 return "SPOTLIGHT_CLOSE_SUCCESS";
             }
             PopoutService.closeDankLauncherV2();
@@ -1616,7 +1626,7 @@ Item {
 
         function toggle(): string {
             if (Form.chrome && Form.chromes.length > 0) {
-                Form.chromes[0].triggerLauncher("toggle");
+                root.getPreferredBar().triggerLauncher("toggle");
                 return "SPOTLIGHT_TOGGLE_SUCCESS";
             }
             PopoutService.toggleDankLauncherV2();

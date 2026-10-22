@@ -45,6 +45,19 @@ fi
 
 # Remember the stock setup first, then point DMS at the Coreflame theme (Phainon form).
 sh "$here/coreflame.sh" arm
+
+# Terminal pieces that follow the form. The shell links Fastfetch's config to the form's own
+# layout, so keep yours (put back by "coreflame.sh off"); btop gets a config only if it has none.
+state_dir="${XDG_CONFIG_HOME:-$HOME/.config}/coreflame"
+fetch="${XDG_CONFIG_HOME:-$HOME/.config}/fastfetch/config.jsonc"
+if [ -f "$fetch" ] && [ ! -L "$fetch" ] && [ ! -f "$state_dir/fastfetch-config.jsonc.before" ]; then
+    cp "$fetch" "$state_dir/fastfetch-config.jsonc.before"
+fi
+btop_conf="${XDG_CONFIG_HOME:-$HOME/.config}/btop/btop.conf"
+if [ ! -f "$btop_conf" ]; then
+    mkdir -p "$(dirname "$btop_conf")"
+    printf 'color_theme = "coreflame"\ntheme_background = False\ntruecolor = True\n' > "$btop_conf"
+fi
 python3 -I - "$cfg" "$state" << 'PY'
 import json, os, sys
 cfg, state = sys.argv[1:3]

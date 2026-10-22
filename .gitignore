@@ -11,7 +11,3 @@ before.json
 *.bak
 *~
 .DS_Store
-
-# Official HoYoverse renders: fine to use locally, not to publish
-/overlay/assets/coreflame/fastfetch/*.png
-/plymouth/*/figure.png

@@ -249,7 +249,7 @@ Scope {
                         if (Form.chrome && Form.chromes.length > 0) {
                             const typed = event.text.trim();
                             if (typed !== "")
-                                Form.chromes[0].triggerLauncher("open", typed);
+                                (Form.chromes.find(c => c.modelData?.name === overlayWindow.screen?.name) ?? Form.chromes[0]).triggerLauncher("open", typed);
                             event.accepted = true;
                             return;
                         }

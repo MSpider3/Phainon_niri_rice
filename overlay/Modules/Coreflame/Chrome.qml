@@ -62,9 +62,16 @@ PanelWindow {
         popout.setTriggerPosition(pos.x, pos.y, pos.width, section, win.screen, 0, win.strip, 4, barConfig);
     }
 
-    function triggerControlCenter() {
+    // `what`: "open", "close", or toggle when left out
+    function triggerControlCenter(what) {
         controlLoader.active = true;
-        controlLoader.item?.toggle();
+        const item = controlLoader.item;
+        if (what === "open")
+            item?.open();
+        else if (what === "close")
+            item?.close();
+        else
+            item?.toggle();
     }
 
     function positionDash(popout, position) {
@@ -73,7 +80,7 @@ PanelWindow {
     }
 
     // The Coreflame dashboard grows out of the island. Stock tab names map onto its views.
-    function triggerDashTab(tabId, position) {
+    function triggerDashTab(tabId, position, what) {
         const views = {
             "overview": "",
             "media": "music",
@@ -83,7 +90,12 @@ PanelWindow {
         dashLoader.active = true;
         if (!dashLoader.item)
             return false;
-        dashLoader.item.toggle(views[tabId] ?? "");
+        if (what === "open")
+            dashLoader.item.open(views[tabId] ?? "");
+        else if (what === "close")
+            dashLoader.item.close();
+        else
+            dashLoader.item.toggle(views[tabId] ?? "");
         return true;
     }
 
@@ -156,6 +168,32 @@ PanelWindow {
             uptimeFile.reload();
             if (parseFloat(uptimeFile.text()) >= 6 * 3600)
                 Coreflames.earn("time");
+        }
+    }
+
+    // GTK4 apps read the form colours only when their process starts, and apps such as Files keep
+    // running in the background after their last window closes, so reopening them reused the old
+    // form's colours. After a form change (once DMS has written the new colours) those background
+    // copies are quit; one with a window open is left alone and handled once its windows close.
+    property bool gtkStale: false
+    readonly property var windowPids: NiriService.windows.map(w => w.pid).filter(p => p > 0)
+    onWindowPidsChanged: {
+        if (gtkStale)
+            gtkTimer.restart();
+    }
+
+    Process {
+        id: gtkRefresh
+        command: ["sh", String(Qt.resolvedUrl("../../assets/coreflame/gtk-refresh.sh")).replace("file://", "")].concat(win.windowPids.map(String))
+        onExited: code => win.gtkStale = code !== 0
+    }
+
+    Timer {
+        id: gtkTimer
+        interval: 6000
+        onTriggered: {
+            if (win.lead && Form.live && win.gtkStale && !gtkRefresh.running)
+                gtkRefresh.running = true;
         }
     }
 
@@ -718,6 +756,8 @@ PanelWindow {
             function onFormChanged() {
                 if (!Form.active)
                     return;
+                win.gtkStale = true;
+                gtkTimer.restart();
                 win.playTransformation();
                 island.announce({
                     "icon": Form.phainon ? "wb_sunny" : (Form.khaslana ? "local_fire_department" : "dark_mode"),

@@ -15,7 +15,22 @@ PanelWindow {
     property int strip: 40
     property bool shown: false
     property real reveal: shown ? 1 : 0
-    property int selected: 0
+    // The selection follows the process, not the row: the list re-sorts on every refresh.
+    property int selectedPid: -1
+    readonly property int selected: processes.findIndex(p => p.pid === selectedPid)
+
+    // The list is empty for a moment after opening, and a selected process can exit:
+    // fall back to the first row then.
+    onProcessesChanged: {
+        if (shown && selected < 0)
+            select(0);
+    }
+
+    function select(index) {
+        const proc = processes[Math.max(0, Math.min(processes.length - 1, index))];
+        if (proc)
+            selectedPid = proc.pid;
+    }
     property int armed: -1
     // Right-click menu and details card: the process they are about, and where the menu opens.
     property var menuFor: null
@@ -32,7 +47,7 @@ PanelWindow {
         if (NiriService.inOverview)
             NiriService.closeOverview();
         Coreflames.earn("law");
-        selected = 0;
+        select(0);
         armed = -1;
         shown = true;
         keys.forceActiveFocus();
@@ -174,11 +189,11 @@ PanelWindow {
                     mon.close();
             }
             Keys.onDownPressed: {
-                mon.selected = Math.min(mon.processes.length - 1, mon.selected + 1);
+                mon.select(mon.selected + 1);
                 mon.armed = -1;
             }
             Keys.onUpPressed: {
-                mon.selected = Math.max(0, mon.selected - 1);
+                mon.select(mon.selected - 1);
                 mon.armed = -1;
             }
             Keys.onTabPressed: DgopService.setSortBy(DgopService.currentSort === "cpu" ? "memory" : "cpu")
@@ -393,12 +408,12 @@ PanelWindow {
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         onPositionChanged: {
                             if (mon.selected !== row.index) {
-                                mon.selected = row.index;
+                                mon.selectedPid = row.modelData.pid;
                                 mon.armed = -1;
                             }
                         }
                         onClicked: mouse => {
-                            mon.selected = row.index;
+                            mon.selectedPid = row.modelData.pid;
                             mon.armed = -1;
                             if (mouse.button === Qt.RightButton) {
                                 const at = mapToItem(panel, mouse.x, mouse.y);
