@@ -160,6 +160,10 @@ Item {
 
     IpcHandler {
         function open() {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerPowerMenu("open");
+                return "POWERMENU_OPEN_SUCCESS";
+            }
             root.powerMenuModalLoader.active = true;
             if (root.powerMenuModalLoader.item)
                 root.powerMenuModalLoader.item.openCentered();
@@ -168,6 +172,8 @@ Item {
         }
 
         function close() {
+            for (const c of Form.chromes)
+                c.triggerPowerMenu("close");
             if (root.powerMenuModalLoader.item)
                 root.powerMenuModalLoader.item.close();
 

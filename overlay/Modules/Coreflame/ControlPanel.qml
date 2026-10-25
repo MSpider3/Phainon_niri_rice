@@ -222,7 +222,7 @@ PanelWindow {
                     elide: Text.ElideRight
                     wrapMode: Text.NoWrap
                     text: {
-                        const full = tile.line && tile.sub !== "" ? tile.label + "  ·  " + tile.sub : tile.label;
+                        const full = tile.line && tile.sub !== "" ? tile.label + "  ·  " + tile.sub.replace(/ · /g, "  ·  ") : tile.label;
                         return Form.reaver ? full.toLowerCase() : full;
                     }
                     font.pixelSize: Theme.fontSizeMedium

@@ -403,7 +403,8 @@ PanelWindow {
         StyledText {
             visible: dash.view === ""
             anchors.right: parent.right
-            anchors.rightMargin: 22
+            // Reaver's mask slats sit in the last 58 px of the edge.
+            anchors.rightMargin: Form.reaver ? 70 : 22
             height: dash.strip
             verticalAlignment: Text.AlignVCenter
             opacity: dash.reveal
@@ -941,6 +942,14 @@ PanelWindow {
             readonly property MprisPlayer player: MprisController.activePlayer
             readonly property var lines: [["time", (clock.date?.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm ap") ?? "") + "  ·  " + (clock.date?.toLocaleDateString(I18n.locale(), "dddd d MMMM") ?? "") + "  ·  " + Form.dawnPeriod(clock.date?.getHours() ?? 0)], ["sky", WeatherService.weather.available ? WeatherService.currentTempText(false) + "  ·  " + WeatherService.getWeatherCondition(WeatherService.weather.wCode) + "  ·  " + (WeatherService.weather.city ?? "") : "nothing."], ["law", "cpu " + Math.round(DgopService.cpuUsage || 0) + "  ·  heat " + Math.round(DgopService.cpuTemperature || 0) + "°  ·  mem " + Math.round(DgopService.memoryUsage || 0)], ["ocean", player ? (player.trackTitle || player.identity || "") + (player.trackArtist ? "  ·  " + player.trackArtist : "") : "nothing."], ["coreflames", Coreflames.count + " of 12 gathered  ·  " + Coreflames.order.filter(n => Coreflames.has(n)).map(n => Coreflames.titans[n][0].toLowerCase()).join(", ")], ["cycle", Form.cycleText + "  ·  all is futility."]]
 
+            // Label column as wide as the longest label, so every value starts on the same line.
+            TextMetrics {
+                id: labelWidth
+                font.family: Theme.monoFontFamily
+                font.pixelSize: Theme.fontSizeMedium
+                text: "// coreflames"
+            }
+
             Column {
                 spacing: 7
 
@@ -952,7 +961,7 @@ PanelWindow {
                         spacing: 0
 
                         Text {
-                            width: 110
+                            width: Math.ceil(labelWidth.advanceWidth) + 18
                             text: "// " + modelData[0]
                             font.family: Theme.monoFontFamily
                             font.pixelSize: Theme.fontSizeMedium
@@ -960,7 +969,7 @@ PanelWindow {
                         }
 
                         Text {
-                            width: dash.panelWidth - 36 - 110
+                            width: dash.panelWidth - 36 - Math.ceil(labelWidth.advanceWidth) - 18
                             elide: Text.ElideRight
                             text: String(modelData[1]).toLowerCase()
                             font.family: Theme.monoFontFamily
@@ -993,8 +1002,19 @@ PanelWindow {
                         color: Theme.withAlpha(Theme.surfaceText, 0.45)
                     }
 
+                    // Cells exactly two digits wide, so the grid starts under its heading and a struck-out
+                    // single digit does not strike a padding space too.
+                    TextMetrics {
+                        id: twoDigits
+                        font.family: Theme.monoFontFamily
+                        font.pixelSize: Theme.fontSizeMedium
+                        text: "00"
+                    }
+
                     Grid {
                         columns: 7
+                        columnSpacing: 38 - cellWidth
+                        readonly property real cellWidth: Math.ceil(twoDigits.advanceWidth)
 
                         Repeater {
                             model: 42
@@ -1003,10 +1023,10 @@ PanelWindow {
                                 required property int index
                                 readonly property date when: new Date(month.first.getFullYear(), month.first.getMonth(), 1 - month.first.getDay() + index)
                                 readonly property bool today: when.toDateString() === (clock.date ?? new Date()).toDateString()
-                                width: 38
+                                width: parent.cellWidth
                                 height: 24
                                 horizontalAlignment: Text.AlignRight
-                                text: String(when.getDate()).padStart(2, " ")
+                                text: when.getDate()
                                 font.family: Theme.monoFontFamily
                                 font.pixelSize: Theme.fontSizeMedium
                                 font.underline: today
@@ -1018,7 +1038,7 @@ PanelWindow {
                 }
 
                 Column {
-                    spacing: 10
+                    spacing: 4
 
                     Text {
                         text: "// ocean"
@@ -1027,16 +1047,18 @@ PanelWindow {
                         color: Theme.withAlpha(Theme.surfaceText, 0.45)
                     }
 
-                    Transport {
+                    Column {
                         visible: !!ledger.player
-                    }
+                        spacing: 10
 
-                    CfBlade {
-                        visible: !!ledger.player
-                        width: 300
-                        interactive: ledger.player?.canSeek ?? false
-                        value: ledger.player && ledger.player.length > 0 ? ledger.player.position / ledger.player.length : 0
-                        onMoved: to => ledger.player.position = to * ledger.player.length
+                        Transport {}
+
+                        CfBlade {
+                            width: 300
+                            interactive: ledger.player?.canSeek ?? false
+                            value: ledger.player && ledger.player.length > 0 ? ledger.player.position / ledger.player.length : 0
+                            onMoved: to => ledger.player.position = to * ledger.player.length
+                        }
                     }
 
                     Text {
@@ -1180,14 +1202,16 @@ PanelWindow {
 
         Row {
             spacing: 12
-            height: 230
+            height: 266
 
             Card {
                 width: (parent.width - 12) / 2
                 height: parent.height
 
+                // Both cards start their figures at the same height, so the two clocks line up.
                 Column {
-                    anchors.centerIn: parent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 28
                     spacing: 14
 
                     StyledText {
@@ -1199,6 +1223,7 @@ PanelWindow {
                     }
 
                     CfBlade {
+                        anchors.horizontalCenter: parent.horizontalCenter
                         meter: true
                         width: 300
                         value: Chrono.timerTotal > 0 ? Chrono.timerLeft / Chrono.timerTotal : 0
@@ -1244,8 +1269,9 @@ PanelWindow {
                 height: parent.height
 
                 Column {
-                    anchors.centerIn: parent
-                    spacing: 18
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 28
+                    spacing: 14
 
                     StyledText {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1405,7 +1431,7 @@ PanelWindow {
 
                                 StyledText {
                                     anchors.right: parent.right
-                                    text: String(modelData.value)
+                                    text: dash.tx(String(modelData.value))
                                     font.pixelSize: Theme.fontSizeSmall
                                     font.weight: Font.DemiBold
                                     color: Theme.surfaceText

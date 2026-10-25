@@ -81,12 +81,20 @@ Singleton {
     readonly property string cyreneLine: cyreneLines[boots % cyreneLines.length]
     readonly property string greeting: phainon ? "Remember the past, and become the hero of tomorrow." : (khaslana ? "As long as I burn, they'll never truly leave me." : (reaver ? "Climb, fall, climb, fall, climb again." : ""))
 
+    // Kept in stateDir/boots as "<count> <boot id>": one more each time the kernel's boot id is new.
+    // Seeded once from the journal; after that, journal rotation or vacuuming can't lower it.
     Process {
         running: root.active
-        command: ["sh", "-c", "journalctl --list-boots -q 2>/dev/null | wc -l"]
+        command: ["sh", "-c", "f=\"$1/boots\"; id=$(cat /proc/sys/kernel/random/boot_id); n=; last=; [ -f \"$f\" ] && read -r n last < \"$f\"; case \"$n\" in '' | *[!0-9]*) n=$(journalctl --list-boots -q 2>/dev/null | wc -l); last=$id ;; esac; [ \"$id\" != \"$last\" ] && n=$((n + 1)); mkdir -p \"$1\" && printf '%s %s\\n' \"$n\" \"$id\" > \"$f\"; echo \"$n\"", "sh", root.stateDir]
         stdout: StdioCollector {
             onStreamFinished: root.boots = parseInt(text.trim()) || 0
         }
+    }
+
+    // The terminal prompt and cycle file are written at start; rewrite them if the count lands late.
+    onCycleChanged: {
+        if (settled)
+            applyDesktop();
     }
 
     // Each form has its wallpaper. Changing form changes it; random wallpaper cycling is switched

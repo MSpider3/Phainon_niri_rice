@@ -144,7 +144,7 @@ PanelWindow {
     Item {
         id: panel
 
-        readonly property real listTop: mon.strip + 112
+        readonly property real listTop: mon.strip + 124
         readonly property real fullHeight: listTop + Math.max(1, mon.processes.length) * mon.rowHeight + 48
 
         x: Math.round((mon.width - width) / 2)
@@ -298,7 +298,9 @@ PanelWindow {
             height: 20
             opacity: mon.reveal
 
+            // Over the name column (list x 14 + name x 76, less this row's x 22)
             StyledText {
+                x: 68
                 text: mon.tx("PROCESS")
                 font.pixelSize: 10
                 font.letterSpacing: 1.3

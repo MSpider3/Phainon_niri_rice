@@ -578,7 +578,7 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - 60
                         elide: Text.ElideRight
-                        text: String(row.modelData.name ?? "").toLowerCase() + ((row.modelData.comment || row.modelData.genericName) ? "   ·   " + String(row.modelData.comment || row.modelData.genericName).toLowerCase() : "")
+                        text: String(row.modelData.name ?? "").trim().toLowerCase() + ((row.modelData.comment || row.modelData.genericName) ? "  ·  " + String(row.modelData.comment || row.modelData.genericName).trim().toLowerCase() : "")
                         font.family: Theme.monoFontFamily
                         font.pixelSize: Theme.fontSizeMedium
                         color: row.current ? Theme.primaryText : Theme.surfaceText

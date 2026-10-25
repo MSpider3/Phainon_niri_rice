@@ -275,9 +275,18 @@ PanelWindow {
         }
     }
 
-    function triggerPowerMenu() {
+    function triggerPowerMenu(what) {
+        if (what === "close") {
+            // Reading item would load the menu just to close it.
+            if (powerLoader.active)
+                powerLoader.item?.close();
+            return;
+        }
         powerLoader.active = true;
-        powerLoader.item?.toggle();
+        if (what === "open")
+            powerLoader.item?.open();
+        else
+            powerLoader.item?.toggle();
     }
 
     LazyLoader {
