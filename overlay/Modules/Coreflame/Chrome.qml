@@ -289,6 +289,32 @@ PanelWindow {
             powerLoader.item?.toggle();
     }
 
+    function playCinematic(file, then) {
+        cinemaLoader.active = true;
+        if (cinemaLoader.item)
+            cinemaLoader.item.play(file, then);
+        else if (then)
+            then();
+    }
+
+    LazyLoader {
+        id: cinemaLoader
+
+        Cinematic {
+            targetScreen: win.screen
+        }
+    }
+
+    // The opening plays once per boot, on the shell's first start.
+    Connections {
+        target: Form
+
+        function onNewBootChanged() {
+            if (Form.newBoot && win.lead)
+                Form.cinematic("opening");
+        }
+    }
+
     LazyLoader {
         id: controlLoader
 
@@ -1082,14 +1108,17 @@ PanelWindow {
                     DankIcon {
                         required property string modelData
                         required property int index
+                        // Faded when the player doesn't offer this button.
+                        readonly property bool able: index === 0 ? !!(island.player?.canGoPrevious || island.player?.canSeek) : index === 2 ? !!island.player?.canGoNext : !!island.player?.canTogglePlaying
                         anchors.verticalCenter: parent.verticalCenter
                         name: modelData
                         size: 20
-                        color: Theme.primary
+                        color: able ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.3)
 
                         MouseArea {
                             anchors.fill: parent
                             anchors.margins: -3
+                            enabled: parent.able
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (index === 0)

@@ -1526,6 +1526,19 @@ Item {
         target: "formschedule"
     }
 
+    // Preview the Coreflame cinematics: dms ipc call cinematic play opening|closing
+    IpcHandler {
+        function play(name: string): string {
+            const bar = Form.chromes.length > 0 ? root.getPreferredBar() : null;
+            if (!bar)
+                return "CINEMATIC_UNAVAILABLE";
+            bar.playCinematic(Form.stateDir + "/cinematics/" + name + ".mkv");
+            return "CINEMATIC_PLAYING";
+        }
+
+        target: "cinematic"
+    }
+
     IpcHandler {
         function open(): string {
             if (Form.chrome && Form.chromes.length > 0) {

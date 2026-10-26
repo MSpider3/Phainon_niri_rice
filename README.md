@@ -59,6 +59,8 @@ Pick a form and the whole desktop follows: colours, shapes, fonts, wallpaper, GT
 
 ## Before you start
 
+**This isn't a standalone shell.** To use it, niri has to be your compositor and DankMaterialShell has to be the shell you actually run every day. The rice swaps out stock DMS's interface for its own, while DMS keeps running underneath doing the real work (settings, plugins, notifications, network, and so on). Think of it as a theme, just one that changes the whole look instead of only the colours. No niri or no DMS means nothing for it to sit on.
+
 You need:
 
 - niri

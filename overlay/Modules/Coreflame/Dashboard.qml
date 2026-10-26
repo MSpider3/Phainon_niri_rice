@@ -258,13 +258,16 @@ PanelWindow {
                 required property string modelData
                 required property int index
                 anchors.verticalCenter: parent.verticalCenter
+                // Faded when the player doesn't offer this button.
+                readonly property bool able: index === 0 ? !!(MprisController.activePlayer?.canGoPrevious || MprisController.activePlayer?.canSeek) : index === 2 ? !!MprisController.activePlayer?.canGoNext : !!MprisController.activePlayer?.canTogglePlaying
                 name: modelData
                 size: index === 1 ? parent.iconSize + 8 : parent.iconSize
-                color: Theme.primary
+                color: able ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.3)
 
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -4
+                    enabled: parent.able
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (index === 0)

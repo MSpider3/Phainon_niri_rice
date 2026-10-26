@@ -34,6 +34,13 @@ echo "Wallpapers -> $walls"
 mkdir -p "$walls"
 cp -n "$here"/wallpapers/* "$walls/"
 
+# Opening (first shell start after a boot) and closing (restart / shut down) cinematics.
+# A video already there is kept, so your own clips survive a reinstall.
+cine="${XDG_CONFIG_HOME:-$HOME/.config}/coreflame/cinematics"
+echo "Cinematics -> $cine"
+mkdir -p "$cine"
+cp -n "$here"/cinematics/*.mkv "$cine/"
+
 echo "Theme and form-switch plugin -> $cfg"
 mkdir -p "$cfg/themes/coreflame" "$cfg/plugins/coreflameForms"
 cp "$here"/dms-config/theme/coreflame/* "$cfg/themes/coreflame/"

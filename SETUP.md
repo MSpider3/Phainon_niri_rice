@@ -30,7 +30,7 @@ Leave out `--icons` if you don't want the icon, folder, cursor and GTK theme pac
 `install.sh` does all of this, in order:
 
 1. Copies the fonts to `~/.local/share/fonts/coreflame/`.
-2. Copies the three wallpapers to `~/Pictures/Phainon/` (it never overwrites files already there).
+2. Copies the three wallpapers to `~/Pictures/Phainon/` and the opening and closing cinematics to `~/.config/coreflame/cinematics/` (it never overwrites files already there).
 3. Copies the Coreflame theme and the small form-switch plugin into `~/.config/DankMaterialShell/`.
 4. With `--icons`, runs `tools/icons.sh`:
    - the Gruvbox Plus icons, plus three folder sets tinted per form;
@@ -61,6 +61,8 @@ dms ipc call formschedule status
 **Wallpapers:** each form uses its picture in `~/Pictures/Phainon/` (`phianon.png`, `khaslana.png`, `flame reaver.jpeg`). Replace those files and keep the names to use your own.
 
 **The dock:** move the pointer to the bottom edge of the screen. It shows the windows of the current workspace; scroll on it to move between columns.
+
+**Opening and closing cinematics:** the opening plays full screen the first time the shell starts after a boot; the closing plays when you pick Restart or Shut down in the power menu, and the machine restarts or shuts down when it ends. Esc or a click skips either one. Preview them with `dms ipc call cinematic play opening` (or `closing`). They live in `~/.config/coreflame/cinematics/` as `opening.mkv` and `closing.mkv`: replace those files to use your own clips, or delete them to turn the cinematics off.
 
 **Keybinds are unchanged.** Whatever opens the DMS launcher, clipboard, process list, power menu or control centre on your setup now opens the Coreflame version.
 
@@ -149,7 +151,7 @@ Any of these returns you to stock DMS with the theme, wallpaper cycling, icons, 
 | `tools/icons.sh` | icon, folder, cursor and GTK theme packs |
 | `tools/guard.sh` | the safety net (installed to `~/.config/coreflame/`) |
 | `plymouth/` | boot splash themes and their installer |
-| `fonts/`, `wallpapers/` | copied in by `install.sh` |
+| `fonts/`, `wallpapers/`, `cinematics/` | copied in by `install.sh` |
 | `dev/` | the sandbox for testing changes |
 
-The character art used by Fastfetch and the boot splash is official Honkai: Star Rail artwork owned by HoYoverse; this is a fan project.
+The character art used by Fastfetch and the boot splash, and the footage in the cinematics, are official Honkai: Star Rail material owned by HoYoverse; this is a fan project.

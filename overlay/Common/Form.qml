@@ -85,10 +85,29 @@ Singleton {
     // Seeded once from the journal; after that, journal rotation or vacuuming can't lower it.
     Process {
         running: root.active
-        command: ["sh", "-c", "f=\"$1/boots\"; id=$(cat /proc/sys/kernel/random/boot_id); n=; last=; [ -f \"$f\" ] && read -r n last < \"$f\"; case \"$n\" in '' | *[!0-9]*) n=$(journalctl --list-boots -q 2>/dev/null | wc -l); last=$id ;; esac; [ \"$id\" != \"$last\" ] && n=$((n + 1)); mkdir -p \"$1\" && printf '%s %s\\n' \"$n\" \"$id\" > \"$f\"; echo \"$n\"", "sh", root.stateDir]
+        command: ["sh", "-c", "f=\"$1/boots\"; id=$(cat /proc/sys/kernel/random/boot_id); n=; last=; [ -f \"$f\" ] && read -r n last < \"$f\"; case \"$n\" in '' | *[!0-9]*) n=$(journalctl --list-boots -q 2>/dev/null | wc -l); last=$id ;; esac; new=0; [ \"$id\" != \"$last\" ] && n=$((n + 1)) && new=1; mkdir -p \"$1\" && printf '%s %s\\n' \"$n\" \"$id\" > \"$f\"; echo \"$n $new\"", "sh", root.stateDir]
         stdout: StdioCollector {
-            onStreamFinished: root.boots = parseInt(text.trim()) || 0
+            onStreamFinished: {
+                const [count, isNew] = text.trim().split(" ");
+                root.boots = parseInt(count) || 0;
+                root.newBoot = isNew === "1";
+            }
         }
+    }
+
+    // True when this is the shell's first start since the machine booted (the opening cinematic plays).
+    property bool newBoot: false
+
+    // Plays ~/.config/coreflame/cinematics/<name>.mkv full screen, then runs `then`. Without a live
+    // Coreflame chrome (stock DMS, the sandbox) it runs `then` straight away.
+    function cinematic(name, then) {
+        const lead = active && live ? chromes[0] : null;
+        if (!lead) {
+            if (then)
+                then();
+            return;
+        }
+        lead.playCinematic(stateDir + "/cinematics/" + name + ".mkv", then);
     }
 
     // The terminal prompt and cycle file are written at start; rewrite them if the count lands late.

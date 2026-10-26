@@ -86,10 +86,10 @@ PanelWindow {
             SessionService.logout();
             break;
         case 3:
-            SessionService.reboot();
+            Form.cinematic("closing", () => SessionService.reboot());
             break;
         case 4:
-            SessionService.poweroff();
+            Form.cinematic("closing", () => SessionService.poweroff());
             break;
         }
     }
