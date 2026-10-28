@@ -8,7 +8,9 @@ import Quickshell.Services.Mpris
 import qs.Common
 import qs.Services
 import qs.Widgets
+import qs.DCommon.Widgets
 import Qt.labs.folderlistmodel
+import "../../Common/Format.js" as Format
 
 // The dashboard the island grows into. One summary page; a card opens in place into its full view.
 PanelWindow {
@@ -17,7 +19,8 @@ PanelWindow {
     required property var targetScreen
     property int strip: 40
 
-    // "" is the summary; otherwise "music", "weather", "wallpaper" or "time"
+    // "" is the overview; otherwise "music", "weather", "wallpaper", "time", "notifications",
+    // "wellbeing" or "network"
     property string view: ""
     onViewChanged: {
         if (view === "weather")
@@ -32,8 +35,6 @@ PanelWindow {
     readonly property real panelWidth: 780
     readonly property real col: 240
     readonly property real gap: 12
-    // The bottom row holds four buttons across the same width.
-    readonly property real quarter: (panelWidth - 36 - 3 * gap) / 4
 
     function open(which) {
         view = which || "";
@@ -108,11 +109,11 @@ PanelWindow {
 
     onShownChanged: {
         if (shown) {
-            DgopService.addRef(["cpu", "memory", "system"]);
+            DgopService.addRef(["cpu", "memory", "system", "network"]);
             WeatherService.addRef();
             panel.forceActiveFocus();
         } else {
-            DgopService.removeRef(["cpu", "memory", "system"]);
+            DgopService.removeRef(["cpu", "memory", "system", "network"]);
             WeatherService.removeRef();
         }
     }
@@ -134,66 +135,6 @@ PanelWindow {
     MouseArea {
         anchors.fill: parent
         onClicked: dash.close()
-    }
-
-    component Card: Item {
-        id: card
-
-        property bool clickable: false
-        // Small caps label in the corner: which Titan's domain this card is, and what it shows.
-        property string label: ""
-        // Khaslana indexes every plate with a Roman numeral.
-        property string numeral: ""
-        // The Titan's sigil for this card's domain
-        property string glyph: ""
-        default property alias content: inner.data
-        signal clicked
-
-        CfSurface {
-            anchors.fill: parent
-            color: cardMouse.containsMouse && card.clickable ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
-            edgeColor: Theme.withAlpha(Theme.outline, Form.khaslana ? 0.9 : 0.45)
-            edgeWidth: Form.reaver ? 0 : 1
-            radius: 16
-        }
-
-        MouseArea {
-            id: cardMouse
-            anchors.fill: parent
-            hoverEnabled: card.clickable
-            cursorShape: card.clickable ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: if (card.clickable)
-                card.clicked()
-        }
-
-        CfGlyph {
-            visible: card.glyph !== "" && card.label !== ""
-            x: 13
-            y: 7
-            name: card.glyph
-            size: 15
-            strokeWidth: 1.9
-            color: Theme.withAlpha(Theme.surfaceText, 0.6)
-        }
-
-        Text {
-            visible: card.label !== ""
-            x: card.glyph !== "" ? 34 : 14
-            y: 9
-            text: Form.reaver ? "// " + card.label.toLowerCase() : ((Form.khaslana && card.numeral !== "" ? card.numeral + "  ·  " : "") + card.label.toUpperCase())
-            font.family: Form.reaver ? Theme.monoFontFamily : Form.display(Theme.fontFamily)
-            font.pixelSize: 10
-            font.weight: Font.Medium
-            font.letterSpacing: Form.reaver ? 0.5 : 1.4
-            color: Theme.withAlpha(Theme.surfaceText, 0.5)
-        }
-
-        Item {
-            id: inner
-            anchors.fill: parent
-            anchors.margins: 14
-            anchors.topMargin: card.label !== "" ? 24 : 14
-        }
     }
 
     component Chip: Item {
@@ -220,7 +161,7 @@ PanelWindow {
             anchors.centerIn: parent
             spacing: 6
 
-            DankIcon {
+            DIcon {
                 visible: chip.icon !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 name: chip.icon
@@ -254,7 +195,7 @@ PanelWindow {
         Repeater {
             model: ["skip_previous", parent.playing ? "pause" : "play_arrow", "skip_next"]
 
-            DankIcon {
+            DIcon {
                 required property string modelData
                 required property int index
                 anchors.verticalCenter: parent.verticalCenter
@@ -298,7 +239,7 @@ PanelWindow {
             visible: status === Image.Ready
         }
 
-        DankIcon {
+        DIcon {
             anchors.centerIn: parent
             visible: coverImage.status !== Image.Ready
             name: "music_note"
@@ -363,7 +304,7 @@ PanelWindow {
             height: dash.strip
             spacing: 10
 
-            DankIcon {
+            DIcon {
                 visible: dash.view !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 name: "arrow_back"
@@ -392,7 +333,10 @@ PanelWindow {
                         "music": "Ocean · Now playing",
                         "weather": "Sky · Weather",
                         "wallpaper": "Worldbearing · Wallpapers",
-                        "time": "Time · Timer and stopwatch"
+                        "time": "Time · Clock",
+                        "notifications": "Romance · Messages",
+                        "wellbeing": "Time · Wellbeing",
+                        "network": "Passage · Network"
                     };
                     return dash.tx(names[dash.view] ?? "");
                 }
@@ -419,77 +363,332 @@ PanelWindow {
 
         Loader {
             id: body
+
+            // Views that live in their own files
+            readonly property var files: ({
+                    "music": "DashMusic.qml",
+                    "weather": "DashWeather.qml",
+                    "notifications": "DashNotifications.qml",
+                    "wellbeing": "DashWellbeing.qml",
+                    "network": "DashNetwork.qml",
+                    "time": "DashTime.qml"
+                })
+            readonly property var components: ({
+                    "wallpaper": wallpaperView
+                })
+
             x: 18
             y: dash.strip + 8
             width: dash.panelWidth - 36
             opacity: dash.reveal
-            sourceComponent: dash.view === "music" ? musicView : dash.view === "weather" ? weatherView : dash.view === "wallpaper" ? wallpaperView : dash.view === "time" ? timeView : (Form.reaver ? ledgerView : summaryView)
+            sourceComponent: body.files[dash.view] ? fileView : (body.components[dash.view] ?? overviewView)
         }
     }
 
-    // ── summary ──
+    // ── overview: a grid of cards; each opens its full view ──
     Component {
-        id: summaryView
+        id: overviewView
 
         Column {
-            spacing: 12
+            id: overview
+            spacing: dash.gap
+
+            // Left column (clock, system, calendar) and right column (Flame-Chase, weather, notifications)
+            readonly property real leftWidth: 420
+            readonly property real rightWidth: dash.panelWidth - 36 - leftWidth - dash.gap
+            readonly property real half: (leftWidth - dash.gap) / 2
+            readonly property var notes: NotificationService.groupedNotifications.slice(0, 3)
 
             Row {
-                spacing: 12
-                height: 132
+                spacing: dash.gap
 
-                Card {
-                    width: Form.phainon ? dash.col * 2 + dash.gap : dash.col
-                    height: parent.height
-                    numeral: "I"
-                    glyph: "time"
-                    label: "Time · " + Form.dawnPeriod(clock.date?.getHours() ?? 0)
+                Column {
+                    id: leftColumn
+                    spacing: dash.gap
 
                     Row {
-                        anchors.centerIn: parent
-                        spacing: Form.phainon ? 22 : 14
+                        spacing: dash.gap
 
-                        CfSigil {
-                            anchors.verticalCenter: parent.verticalCenter
-                            size: 74
-                            lit: ((clock.date?.getHours() ?? 0) % 12) || 12
-                            dimColor: Theme.withAlpha(Theme.surfaceText, 0.22)
+                        // Clock: opens the full clock (world clock, timer, stopwatch)
+                        DashCard {
+                            width: overview.half
+                            height: 116
+                            clickable: true
+                            numeral: "I"
+                            glyph: "time"
+                            label: "Time · Clock"
+                            onClicked: dash.view = "time"
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 10
+
+                                CfSigil {
+                                    visible: !Form.reaver
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    size: 44
+                                    lit: ((clock.date?.getHours() ?? 0) % 12) || 12
+                                    dimColor: Theme.withAlpha(Theme.surfaceText, 0.22)
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    StyledText {
+                                        text: (clock.date?.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm AP") ?? "").replace(/\s*[AaPp]\.?[Mm]\.?$/, "")
+                                        font.family: Form.reaver ? Theme.monoFontFamily : Form.display(Theme.fontFamily)
+                                        font.pixelSize: 34
+                                        font.weight: Font.Bold
+                                        color: Theme.primary
+                                    }
+
+                                    StyledText {
+                                        text: dash.tx(clock.date?.toLocaleDateString(I18n.locale(), "ddd, d MMM") ?? "")
+                                        font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.weight: Font.Medium
+                                        color: Theme.withAlpha(Theme.surfaceText, 0.75)
+                                    }
+                                }
+                            }
                         }
 
+                        // CPU, heat and memory: opens the island's system monitor
+                        DashCard {
+                            width: overview.half
+                            height: 116
+                            clickable: true
+                            numeral: "II"
+                            glyph: "law"
+                            label: "Law · System"
+                            onClicked: {
+                                const chrome = Form.chromes.find(c => c.screen === dash.screen) ?? Form.chromes[0];
+                                dash.close();
+                                chrome?.triggerProcesses("open");
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width
+                                spacing: 8
+
+                                Repeater {
+                                    model: [["CPU", DgopService.cpuUsage || 0, "%", 90], ["Heat", DgopService.cpuTemperature || 0, "°", 85], ["Mem", DgopService.memoryUsage || 0, "%", 90]]
+
+                                    Row {
+                                        required property var modelData
+                                        readonly property bool alarm: modelData[1] > modelData[3]
+                                        width: parent.width
+                                        spacing: 6
+
+                                        StyledText {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 36
+                                            text: dash.tx(modelData[0])
+                                            font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.withAlpha(Theme.surfaceText, 0.65)
+                                        }
+
+                                        CfBlade {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            meter: true
+                                            width: parent.width - 36 - 38 - 12
+                                            value: modelData[1] / 100
+                                            tide: modelData[0] === "Mem"
+                                            tone: parent.alarm ? Theme.error : (Form.reaver ? Theme.live : Theme.primary)
+                                        }
+
+                                        StyledText {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 38
+                                            horizontalAlignment: Text.AlignRight
+                                            text: Math.round(modelData[1]) + modelData[2]
+                                            font.family: Form.phainon ? Theme.fontFamily : Theme.monoFontFamily
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            font.weight: Font.Bold
+                                            color: parent.alarm ? Theme.error : Theme.surfaceText
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    DashCalendar {
+                        width: overview.leftWidth
+                        height: 330
+                        live: dash.shown
+                        now: clock.date ?? new Date()
+                    }
+                }
+
+                Column {
+                    spacing: dash.gap
+
+                    // The Flame-Chase: twelve Titans' Coreflames, lit as they are gathered (or, for the
+                    // Flame Reaver, taken: each one an ember held in his row).
+                    DashCard {
+                        width: overview.rightWidth
+                        height: 104
+                        numeral: "IV"
+                        glyph: "worldbearing"
+                        label: Form.reaver ? "taken · " + Coreflames.count + " / 12" : "Flame-Chase " + Coreflames.count + " / 12"
+
                         Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 0
+                            anchors.centerIn: parent
+                            spacing: Form.reaver ? 6 : 8
+
+                            Grid {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                columns: 6
+                                columnSpacing: 22
+                                rowSpacing: Form.reaver ? 6 : 10
+
+                                Repeater {
+                                    model: Coreflames.order
+
+                                    CfGlyph {
+                                        id: titan
+                                        required property string modelData
+                                        readonly property bool lit: Coreflames.has(modelData) && Coreflames.count >= 0
+                                        name: modelData
+                                        size: 20
+                                        strokeWidth: lit ? 1.9 : 1.3
+                                        color: lit ? (Form.reaver ? Theme.live : Theme.primary) : Theme.withAlpha(Theme.surfaceText, 0.22)
+                                        onLitChanged: if (lit && Form.reaver)
+                                            ember.flare()
+
+                                        CfEmber {
+                                            id: ember
+                                            anchors.centerIn: parent
+                                            size: 12
+                                            color: Theme.live
+                                        }
+
+                                        HoverHandler {
+                                            id: titanHover
+                                        }
+
+                                        ToolTip.visible: titanHover.hovered
+                                        ToolTip.text: Coreflames.titans[modelData][0] + " · " + Coreflames.titans[modelData][1]
+                                    }
+                                }
+                            }
 
                             StyledText {
-                                text: clock.date?.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm") ?? ""
-                                font.family: Form.display(Theme.fontFamily)
-                                font.pixelSize: 40
-                                font.weight: Font.Bold
+                                visible: Form.reaver
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "the flame-chase will not end..."
+                                font.family: Theme.monoFontFamily
+                                font.pixelSize: Theme.fontSizeSmall
+                                font.italic: true
+                                color: Theme.withAlpha(Theme.live, 0.85)
+                            }
+                        }
+                    }
+
+                    // Wallpapers: under the Flame-Chase, in the card grid rather than a loose button row
+                    Chip {
+                        width: overview.rightWidth
+                        icon: "wallpaper"
+                        label: "Wallpapers"
+                        onClicked: dash.view = "wallpaper"
+                    }
+
+                    // Weather: opens the forecast
+                    DashCard {
+                        width: overview.rightWidth
+                        height: 116
+                        clickable: true
+                        numeral: "V"
+                        glyph: "sky"
+                        label: "Sky · Weather"
+                        onClicked: dash.view = "weather"
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 12
+
+                            DIcon {
+                                visible: !Form.reaver
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: WeatherService.weather.available ? WeatherService.getWeatherIcon(WeatherService.weather.wCode) : "cloud_off"
+                                size: 44
                                 color: Theme.primary
                             }
 
-                            StyledText {
-                                text: dash.tx(clock.date?.toLocaleDateString(I18n.locale(), "ddd, d MMM") ?? "")
-                                font.pixelSize: Theme.fontSizeMedium
-                                font.weight: Font.Medium
-                                color: Theme.withAlpha(Theme.surfaceText, 0.75)
-                            }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
 
-                            // Phainon keeps the machine's strain to one quiet line.
-                            StyledText {
-                                visible: Form.phainon
-                                text: "CPU " + Math.round(DgopService.cpuUsage || 0) + "%  ·  " + Math.round(DgopService.cpuTemperature || 0) + "°  ·  Mem " + Math.round(DgopService.memoryUsage || 0) + "%"
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.withAlpha(Theme.surfaceText, 0.5)
+                                StyledText {
+                                    text: WeatherService.weather.available ? WeatherService.currentTempText(false) : "--"
+                                    font.family: Form.khaslana || Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
+                                    font.pixelSize: 26
+                                    font.weight: Font.DemiBold
+                                    color: Form.reaver ? Theme.live : Theme.surfaceText
+                                }
+
+                                StyledText {
+                                    width: Form.phainon ? 110 : 150
+                                    elide: Text.ElideRight
+                                    text: dash.tx(WeatherService.weather.available ? WeatherService.getWeatherCondition(WeatherService.weather.wCode) : "No weather data")
+                                    font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    color: Theme.withAlpha(Theme.surfaceText, 0.75)
+                                }
+
+                                // The Flame Reaver reads the sun as one plain line.
+                                StyledText {
+                                    visible: Form.reaver && WeatherService.weather.available
+                                    text: dash.tx("sun " + (WeatherService.weather.sunrise ?? "") + " → " + (WeatherService.weather.sunset ?? ""))
+                                    font.family: Theme.monoFontFamily
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    color: Theme.withAlpha(Theme.surfaceText, 0.55)
+                                }
                             }
                         }
 
-                        // The sun's path today: sunrise on the left, sunset on the right
+                        // Khaslana: humidity and wind as cut figures on the right
+                        Column {
+                            visible: Form.khaslana && WeatherService.weather.available
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+
+                            Repeater {
+                                model: [["humidity_percentage", WeatherService.weather.humidity !== undefined ? WeatherService.weather.humidity + "%" : "--"], ["air", WeatherService.weather.wind ?? "--"]]
+
+                                Row {
+                                    required property var modelData
+                                    anchors.right: parent.right
+                                    spacing: 4
+
+                                    DIcon {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: modelData[0]
+                                        size: 14
+                                        color: Theme.primary
+                                    }
+
+                                    StyledText {
+                                        text: modelData[1]
+                                        font.family: Theme.monoFontFamily
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Theme.surfaceText
+                                    }
+                                }
+                            }
+                        }
+
+                        // Phainon: the sun's path today, sunrise on the left, sunset on the right
                         Item {
                             visible: Form.phainon
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 200
-                            height: 92
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            width: 120
+                            height: 70
 
                             Shape {
                                 anchors.fill: parent
@@ -501,10 +700,10 @@ PanelWindow {
                                     strokeWidth: 1.5
 
                                     PathAngleArc {
-                                        centerX: 100
-                                        centerY: 72
-                                        radiusX: 88
-                                        radiusY: 60
+                                        centerX: 60
+                                        centerY: 56
+                                        radiusX: 52
+                                        radiusY: 44
                                         startAngle: 180
                                         sweepAngle: 180
                                     }
@@ -512,379 +711,125 @@ PanelWindow {
                             }
 
                             Rectangle {
-                                x: 6
-                                y: 72
-                                width: 188
+                                x: 4
+                                y: 56
+                                width: 112
                                 height: 1
                                 color: Theme.withAlpha(Theme.outline, 0.5)
                             }
 
                             Rectangle {
                                 readonly property real angle: Math.PI * (1 - dash.dayFraction)
-                                x: 100 + 88 * Math.cos(angle) - 9
-                                y: 72 - 60 * Math.sin(angle) - 9
-                                width: 18
-                                height: 18
-                                radius: 9
+                                x: 60 + 52 * Math.cos(angle) - 7
+                                y: 56 - 44 * Math.sin(angle) - 7
+                                width: 14
+                                height: 14
+                                radius: 7
                                 color: "#E9B92E"
                                 border.width: 3
                                 border.color: Theme.withAlpha("#E9B92E", 0.3)
                             }
 
                             StyledText {
-                                x: 0
-                                y: 76
+                                y: 59
                                 text: WeatherService.weather.sunrise ?? ""
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 color: Theme.withAlpha(Theme.surfaceText, 0.55)
                             }
 
                             StyledText {
                                 anchors.right: parent.right
-                                y: 76
+                                y: 59
                                 text: WeatherService.weather.sunset ?? ""
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 color: Theme.withAlpha(Theme.surfaceText, 0.55)
                             }
                         }
                     }
-                }
 
-                Card {
-                    width: dash.col
-                    height: parent.height
-                    clickable: true
-                    numeral: "II"
-                    glyph: "sky"
-                    label: "Sky · Weather"
-                    onClicked: dash.view = "weather"
+                    // Notifications: the latest few; opens the messages view
+                    DashCard {
+                        width: overview.rightWidth
+                        height: leftColumn.height - 104 - 34 - 116 - 3 * dash.gap
+                        clickable: true
+                        numeral: "VI"
+                        glyph: "romance"
+                        label: "Romance · Messages" + (NotificationService.notifications.length > 0 ? "  ·  " + NotificationService.notifications.length : "")
+                        onClicked: dash.view = "notifications"
 
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 14
+                        Column {
+                            visible: overview.notes.length === 0
+                            anchors.centerIn: parent
+                            spacing: 10
 
-                        DankIcon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: WeatherService.weather.available ? WeatherService.getWeatherIcon(WeatherService.weather.wCode) : "cloud_off"
-                            size: 54
-                            color: Theme.primary
+                            CfSigil {
+                                visible: !Form.reaver
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                size: 40
+                                lit: 0
+                                litColor: Theme.withAlpha(Theme.surfaceText, 0.3)
+                                dimColor: Theme.withAlpha(Theme.surfaceText, 0.3)
+                            }
+
+                            CfGlyph {
+                                visible: Form.reaver
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                name: "mask"
+                                size: 34
+                                strokeWidth: 1.4
+                                color: Theme.withAlpha(Theme.live, 0.7)
+                            }
+
+                            StyledText {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: dash.tx("All caught up")
+                                font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.withAlpha(Theme.surfaceText, 0.6)
+                            }
                         }
 
                         Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-
-                            StyledText {
-                                text: WeatherService.weather.available ? WeatherService.currentTempText(false) : "--"
-                                font.pixelSize: 28
-                                font.weight: Font.DemiBold
-                                color: Theme.surfaceText
-                            }
-
-                            StyledText {
-                                width: 120
-                                elide: Text.ElideRight
-                                text: dash.tx(WeatherService.weather.available ? WeatherService.getWeatherCondition(WeatherService.weather.wCode) : "No weather data")
-                                font.pixelSize: Theme.fontSizeMedium
-                                color: Theme.withAlpha(Theme.surfaceText, 0.75)
-                            }
-                        }
-                    }
-                }
-
-                Card {
-                    width: dash.col
-                    height: parent.height
-                    visible: !Form.phainon
-                    numeral: "III"
-                    glyph: "law"
-                    label: "Law · System"
-
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width
-                        spacing: 9
-
-                        Repeater {
-                            model: [
-                                {
-                                    "name": "CPU",
-                                    "value": (DgopService.cpuUsage || 0) / 100,
-                                    "text": Math.round(DgopService.cpuUsage || 0) + "%",
-                                    "alarm": (DgopService.cpuUsage || 0) > 90
-                                },
-                                {
-                                    "name": "Heat",
-                                    "value": (DgopService.cpuTemperature || 0) / 100,
-                                    "text": Math.round(DgopService.cpuTemperature || 0) + "°",
-                                    "alarm": (DgopService.cpuTemperature || 0) > 85
-                                },
-                                {
-                                    "name": "Memory",
-                                    "value": (DgopService.memoryUsage || 0) / 100,
-                                    "text": Math.round(DgopService.memoryUsage || 0) + "%",
-                                    "alarm": (DgopService.memoryUsage || 0) > 90
-                                }
-                            ]
-
-                            Row {
-                                required property var modelData
-                                width: parent.width
-                                spacing: 8
-
-                                StyledText {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 56
-                                    text: dash.tx(modelData.name)
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    font.weight: Font.Medium
-                                    color: Theme.withAlpha(Theme.surfaceText, 0.65)
-                                }
-
-                                CfBlade {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    meter: true
-                                    width: parent.width - 56 - 44 - 16
-                                    value: modelData.value
-                                    tide: modelData.name === "Memory"
-                                    tone: modelData.alarm ? Theme.error : Theme.primary
-                                }
-
-                                StyledText {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 44
-                                    horizontalAlignment: Text.AlignRight
-                                    text: modelData.text
-                                    font.pixelSize: Theme.fontSizeMedium
-                                    font.weight: Font.Bold
-                                    color: modelData.alarm ? Theme.error : Theme.surfaceText
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Row {
-                spacing: 12
-                height: 274
-
-                // Calendar
-                Card {
-                    id: calendar
-
-                    property date month: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-                    readonly property int offset: month.getDay()
-
-                    width: dash.col * 2 + dash.gap
-                    height: parent.height
-                    numeral: "IV"
-                    glyph: "time"
-                    label: "Time · Calendar"
-
-                    function shift(by) {
-                        month = new Date(month.getFullYear(), month.getMonth() + by, 1);
-                    }
-
-                    Column {
-                        anchors.fill: parent
-                        spacing: 6
-
-                        Item {
+                            visible: overview.notes.length > 0
                             width: parent.width
-                            height: 24
-
-                            StyledText {
-                                anchors.centerIn: parent
-                                text: dash.tx(calendar.month.toLocaleDateString(I18n.locale(), "MMMM yyyy"))
-                                font.pixelSize: Theme.fontSizeLarge
-                                font.weight: Font.DemiBold
-                                color: Theme.surfaceText
-                            }
-
-                            DankIcon {
-                                anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                name: "chevron_left"
-                                size: 22
-                                color: Theme.primary
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    anchors.margins: -4
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: calendar.shift(-1)
-                                }
-                            }
-
-                            DankIcon {
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                name: "chevron_right"
-                                size: 22
-                                color: Theme.primary
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    anchors.margins: -4
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: calendar.shift(1)
-                                }
-                            }
-                        }
-
-                        Grid {
-                            id: days
-                            readonly property real cell: Math.floor(parent.width / 7)
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            columns: 7
+                            spacing: 10
 
                             Repeater {
-                                model: 7
+                                model: overview.notes
 
-                                StyledText {
-                                    required property int index
-                                    width: days.cell
-                                    height: 22
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: dash.tx(new Date(2023, 0, 1 + index).toLocaleDateString(I18n.locale(), "ddd"))
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    color: Theme.withAlpha(Theme.surfaceText, 0.55)
-                                }
-                            }
+                                Column {
+                                    required property var modelData
+                                    width: parent.width
+                                    spacing: 1
 
-                            Repeater {
-                                model: 42
-
-                                Item {
-                                    id: day
-                                    required property int index
-                                    readonly property date when: new Date(calendar.month.getFullYear(), calendar.month.getMonth(), 1 - calendar.offset + index)
-                                    readonly property bool inMonth: when.getMonth() === calendar.month.getMonth()
-                                    readonly property bool today: when.toDateString() === (clock.date ?? new Date()).toDateString()
-                                    width: days.cell
-                                    height: 30
-
-                                    Rectangle {
-                                        visible: day.today
-                                        anchors.centerIn: parent
-                                        width: 26
-                                        height: 26
-                                        radius: Form.phainon || !Form.active ? 13 : 0
-                                        rotation: Form.khaslana ? 45 : 0
-                                        color: Form.phainon ? "#E9B92E" : Theme.primary
+                                    StyledText {
+                                        width: parent.width
+                                        elide: Text.ElideRight
+                                        text: dash.tx((modelData.appName || "") + (modelData.count > 1 ? "  ·  " + modelData.count : "") + "  ·  " + (modelData.latestNotification?.timeStr ?? ""))
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Form.reaver ? Theme.withAlpha(Theme.live, 0.9) : Theme.withAlpha(Theme.surfaceText, 0.55)
                                     }
 
                                     StyledText {
-                                        anchors.centerIn: parent
-                                        text: day.when.getDate()
+                                        width: parent.width
+                                        elide: Text.ElideRight
+                                        text: modelData.latestNotification?.summary ?? ""
                                         font.pixelSize: Theme.fontSizeMedium
-                                        font.weight: day.today ? Font.DemiBold : Font.Normal
-                                        color: day.today ? Theme.primaryText : Theme.withAlpha(Theme.surfaceText, day.inMonth ? 0.95 : 0.3)
+                                        font.weight: Font.DemiBold
+                                        color: Theme.surfaceText
+                                    }
+
+                                    StyledText {
+                                        width: parent.width
+                                        elide: Text.ElideRight
+                                        maximumLineCount: 1
+                                        textFormat: Text.PlainText
+                                        text: modelData.latestNotification?.body ?? ""
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Theme.withAlpha(Theme.surfaceText, 0.7)
                                     }
                                 }
                             }
-                        }
-                    }
-                }
-
-                // Music
-                Card {
-                    width: dash.col
-                    height: parent.height
-                    clickable: !!dash.player
-                    numeral: "V"
-                    glyph: "ocean"
-                    label: "Ocean · Now playing"
-                    onClicked: dash.view = "music"
-
-                    Column {
-                        visible: !!dash.player
-                        anchors.fill: parent
-                        spacing: 8
-
-                        Cover {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 96
-                            height: 96
-                        }
-
-                        StyledText {
-                            width: parent.width
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                            text: dash.player?.trackTitle || dash.player?.identity || ""
-                            font.pixelSize: Theme.fontSizeMedium
-                            font.weight: Font.DemiBold
-                            color: Theme.surfaceText
-                        }
-
-                        StyledText {
-                            width: parent.width
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                            text: dash.player?.trackArtist || ""
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.withAlpha(Theme.surfaceText, 0.65)
-                        }
-
-                        CfBlade {
-                            width: parent.width
-                            interactive: dash.player?.canSeek ?? false
-                            value: dash.player && dash.player.length > 0 ? dash.player.position / dash.player.length : 0
-                            onMoved: to => dash.player.position = to * dash.player.length
-                        }
-
-                        Transport {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
-                    }
-
-                    StyledText {
-                        visible: !dash.player
-                        anchors.centerIn: parent
-                        text: dash.tx("Nothing playing")
-                        font.pixelSize: Theme.fontSizeMedium
-                        color: Theme.withAlpha(Theme.surfaceText, 0.55)
-                    }
-                }
-            }
-
-            // The Flame-Chase: twelve Titans' Coreflames, lit as they are gathered
-            Item {
-                width: parent.width
-                height: 34
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 14
-
-                    StyledText {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: dash.tx("FLAME-CHASE") + "  " + Coreflames.count + " / 12"
-                        font.pixelSize: Theme.fontSizeSmall
-                        font.letterSpacing: 1.4
-                        color: Theme.withAlpha(Theme.surfaceText, 0.6)
-                    }
-
-                    Repeater {
-                        model: Coreflames.order
-
-                        CfGlyph {
-                            required property string modelData
-                            readonly property bool lit: Coreflames.has(modelData) && Coreflames.count >= 0
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: modelData
-                            size: 18
-                            strokeWidth: lit ? 1.9 : 1.3
-                            color: lit ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.22)
-
-                            HoverHandler {
-                                id: titanHover
-                            }
-
-                            ToolTip.visible: titanHover.hovered
-                            ToolTip.text: Coreflames.titans[modelData][0] + " · " + Coreflames.titans[modelData][1]
                         }
                     }
                 }
@@ -892,39 +837,148 @@ PanelWindow {
 
             Row {
                 spacing: dash.gap
+                height: 104
 
-                Chip {
-                    width: dash.quarter
-                    icon: "wallpaper"
-                    label: "Wallpapers"
-                    onClicked: dash.view = "wallpaper"
-                }
-
-                Chip {
-                    width: dash.quarter
-                    icon: "music_note"
-                    label: "Music"
-                    on: dash.playing
+                // Media: opens the player
+                DashCard {
+                    width: 300
+                    height: parent.height
+                    clickable: true
+                    numeral: "VII"
+                    glyph: "ocean"
+                    label: "Ocean · Now playing"
                     onClicked: dash.view = "music"
+
+                    Row {
+                        visible: !!dash.player
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 12
+
+                        Cover {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 58
+                            height: 58
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 300 - 28 - 58 - 12
+                            spacing: 2
+
+                            StyledText {
+                                width: parent.width
+                                elide: Text.ElideRight
+                                wrapMode: Text.NoWrap
+                                text: dash.player?.trackTitle || dash.player?.identity || ""
+                                font.pixelSize: Theme.fontSizeMedium
+                                font.weight: Font.DemiBold
+                                color: Theme.surfaceText
+                            }
+
+                            StyledText {
+                                width: parent.width
+                                elide: Text.ElideRight
+                                wrapMode: Text.NoWrap
+                                text: dash.player?.trackArtist || ""
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.withAlpha(Theme.surfaceText, 0.65)
+                            }
+
+                            Transport {
+                                iconSize: 20
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        visible: !dash.player
+                        anchors.centerIn: parent
+                        text: Form.reaver ? "nothing." : "Nothing playing"
+                        font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeMedium
+                        color: Theme.withAlpha(Theme.surfaceText, 0.55)
+                    }
                 }
 
-                Chip {
-                    width: dash.quarter
-                    icon: "timer"
-                    label: Chrono.timerActive ? "Timer " + Chrono.format(Chrono.timerLeft) : "Timer"
-                    on: Chrono.timerActive
-                    onClicked: dash.view = "time"
+                // Network: down and up now, the last minute as a line; opens the network view
+                DashCard {
+                    width: 252
+                    height: parent.height
+                    clickable: true
+                    numeral: "VIII"
+                    glyph: "passage"
+                    label: "Passage · Network"
+                    onClicked: dash.view = "network"
+
+                    StyledText {
+                        id: downRate
+                        text: Format.formatRate(DgopService.networkRxRate || 0)
+                        font.family: Form.phainon ? Theme.fontFamily : Theme.monoFontFamily
+                        font.pixelSize: 20
+                        font.weight: Font.DemiBold
+                        color: Form.reaver ? Theme.live : Theme.primary
+                    }
+
+                    StyledText {
+                        anchors.right: parent.right
+                        anchors.baseline: downRate.baseline
+                        text: "↑ " + Format.formatRate(DgopService.networkTxRate || 0)
+                        font.family: Theme.monoFontFamily
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.withAlpha(Theme.surfaceText, 0.65)
+                    }
+
+                    DSparkline {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 30
+                        values: DgopService.networkHistory.rx
+                        secondaryValues: DgopService.networkHistory.tx
+                        historyLength: 60
+                        lineColor: Form.reaver ? Theme.live : Theme.primary
+                        secondaryLineColor: Theme.withAlpha(Theme.surfaceText, 0.45)
+                        lineWidth: 1.5
+                        fillOpacity: Form.reaver ? 0 : 0.12
+                        curved: Form.phainon || !Form.active
+                    }
                 }
 
-                Chip {
-                    width: dash.quarter
-                    icon: "partly_cloudy_day"
-                    label: "Forecast"
-                    onClicked: dash.view = "weather"
+                // Screen time today: opens the wellbeing view
+                DashCard {
+                    id: screenTime
+                    width: dash.panelWidth - 36 - 300 - 252 - 2 * dash.gap
+                    height: parent.height
+                    clickable: true
+                    numeral: "IX"
+                    glyph: "time"
+                    label: "Time · Wellbeing"
+                    onClicked: dash.view = "wellbeing"
+
+                    readonly property bool over: SettingsData.wellbeingDailyLimit > 0 && WellbeingService.today.active >= SettingsData.wellbeingDailyLimit * 60
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+
+                        StyledText {
+                            text: WellbeingService.formatDuration(WellbeingService.today.active)
+                            font.family: Form.phainon ? Theme.fontFamily : Theme.monoFontFamily
+                            font.pixelSize: 22
+                            font.weight: Font.DemiBold
+                            color: screenTime.over ? Theme.error : Theme.surfaceText
+                        }
+
+                        StyledText {
+                            text: dash.tx(SettingsData.wellbeingDailyLimit > 0 ? "of " + WellbeingService.formatLimit(SettingsData.wellbeingDailyLimit) : "today")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.withAlpha(Theme.surfaceText, 0.55)
+                        }
+                    }
                 }
             }
 
-            // Aedes Elysiae: a line of wheat under the Phainon summary
+            // Aedes Elysiae: a line of wheat under the Phainon overview
             CfWheat {
                 visible: Form.phainon
                 width: parent.width
@@ -934,614 +988,11 @@ PanelWindow {
         }
     }
 
-    // ── the Flame Reaver's summary: a ledger. No cards, no icons, everything flush left. ──
     Component {
-        id: ledgerView
+        id: fileView
 
-        Column {
-            id: ledger
-            spacing: 14
-
-            readonly property MprisPlayer player: MprisController.activePlayer
-            readonly property var lines: [["time", (clock.date?.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm ap") ?? "") + "  ·  " + (clock.date?.toLocaleDateString(I18n.locale(), "dddd d MMMM") ?? "") + "  ·  " + Form.dawnPeriod(clock.date?.getHours() ?? 0)], ["sky", WeatherService.weather.available ? WeatherService.currentTempText(false) + "  ·  " + WeatherService.getWeatherCondition(WeatherService.weather.wCode) + "  ·  " + (WeatherService.weather.city ?? "") : "nothing."], ["law", "cpu " + Math.round(DgopService.cpuUsage || 0) + "  ·  heat " + Math.round(DgopService.cpuTemperature || 0) + "°  ·  mem " + Math.round(DgopService.memoryUsage || 0)], ["ocean", player ? (player.trackTitle || player.identity || "") + (player.trackArtist ? "  ·  " + player.trackArtist : "") : "nothing."], ["coreflames", Coreflames.count + " of 12 gathered  ·  " + Coreflames.order.filter(n => Coreflames.has(n)).map(n => Coreflames.titans[n][0].toLowerCase()).join(", ")], ["cycle", Form.cycleText + "  ·  all is futility."]]
-
-            // Label column as wide as the longest label, so every value starts on the same line.
-            TextMetrics {
-                id: labelWidth
-                font.family: Theme.monoFontFamily
-                font.pixelSize: Theme.fontSizeMedium
-                text: "// coreflames"
-            }
-
-            Column {
-                spacing: 7
-
-                Repeater {
-                    model: ledger.lines
-
-                    Row {
-                        required property var modelData
-                        spacing: 0
-
-                        Text {
-                            width: Math.ceil(labelWidth.advanceWidth) + 18
-                            text: "// " + modelData[0]
-                            font.family: Theme.monoFontFamily
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: Theme.withAlpha(Theme.surfaceText, 0.45)
-                        }
-
-                        Text {
-                            width: dash.panelWidth - 36 - Math.ceil(labelWidth.advanceWidth) - 18
-                            elide: Text.ElideRight
-                            text: String(modelData[1]).toLowerCase()
-                            font.family: Theme.monoFontFamily
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: modelData[0] === "cycle" ? Theme.live : Theme.surfaceText
-                        }
-                    }
-                }
-            }
-
-            Rectangle {
-                width: dash.panelWidth - 36
-                height: 1
-                color: Theme.withAlpha(Theme.surfaceText, 0.15)
-            }
-
-            Row {
-                spacing: 40
-
-                // The month, as plain figures
-                Column {
-                    id: month
-                    readonly property date first: new Date((clock.date ?? new Date()).getFullYear(), (clock.date ?? new Date()).getMonth(), 1)
-                    spacing: 4
-
-                    Text {
-                        text: "// " + month.first.toLocaleDateString(I18n.locale(), "MMMM yyyy").toLowerCase()
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.withAlpha(Theme.surfaceText, 0.45)
-                    }
-
-                    // Cells exactly two digits wide, so the grid starts under its heading and a struck-out
-                    // single digit does not strike a padding space too.
-                    TextMetrics {
-                        id: twoDigits
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: Theme.fontSizeMedium
-                        text: "00"
-                    }
-
-                    Grid {
-                        columns: 7
-                        columnSpacing: 38 - cellWidth
-                        readonly property real cellWidth: Math.ceil(twoDigits.advanceWidth)
-
-                        Repeater {
-                            model: 42
-
-                            Text {
-                                required property int index
-                                readonly property date when: new Date(month.first.getFullYear(), month.first.getMonth(), 1 - month.first.getDay() + index)
-                                readonly property bool today: when.toDateString() === (clock.date ?? new Date()).toDateString()
-                                width: parent.cellWidth
-                                height: 24
-                                horizontalAlignment: Text.AlignRight
-                                text: when.getDate()
-                                font.family: Theme.monoFontFamily
-                                font.pixelSize: Theme.fontSizeMedium
-                                font.underline: today
-                                font.strikeout: when.getMonth() === month.first.getMonth() && when < (clock.date ?? new Date()) && !today
-                                color: today ? Theme.live : Theme.withAlpha(Theme.surfaceText, when.getMonth() === month.first.getMonth() ? 0.8 : 0.2)
-                            }
-                        }
-                    }
-                }
-
-                Column {
-                    spacing: 4
-
-                    Text {
-                        text: "// ocean"
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.withAlpha(Theme.surfaceText, 0.45)
-                    }
-
-                    Column {
-                        visible: !!ledger.player
-                        spacing: 10
-
-                        Transport {}
-
-                        CfBlade {
-                            width: 300
-                            interactive: ledger.player?.canSeek ?? false
-                            value: ledger.player && ledger.player.length > 0 ? ledger.player.position / ledger.player.length : 0
-                            onMoved: to => ledger.player.position = to * ledger.player.length
-                        }
-                    }
-
-                    Text {
-                        visible: !ledger.player
-                        text: "nothing."
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: Theme.fontSizeMedium
-                        color: Theme.withAlpha(Theme.surfaceText, 0.5)
-                    }
-                }
-            }
-
-            Row {
-                spacing: dash.gap
-
-                Chip {
-                    width: dash.quarter
-                    label: "wallpapers"
-                    onClicked: dash.view = "wallpaper"
-                }
-
-                Chip {
-                    width: dash.quarter
-                    label: "music"
-                    on: dash.playing
-                    onClicked: dash.view = "music"
-                }
-
-                Chip {
-                    width: dash.quarter
-                    label: Chrono.timerActive ? "timer " + Chrono.format(Chrono.timerLeft) : "timer"
-                    on: Chrono.timerActive
-                    onClicked: dash.view = "time"
-                }
-
-                Chip {
-                    width: dash.quarter
-                    label: "forecast"
-                    onClicked: dash.view = "weather"
-                }
-            }
-        }
-    }
-
-    // ── full player ──
-    Component {
-        id: musicView
-
-        Row {
-            spacing: 28
-            height: 240
-
-            Cover {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 240
-                height: 240
-            }
-
-            Column {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 240 - 28
-                spacing: 12
-
-                StyledText {
-                    width: parent.width
-                    elide: Text.ElideRight
-                    text: dash.player?.trackTitle || dash.tx("Nothing playing")
-                    font.pixelSize: 26
-                    font.weight: Font.DemiBold
-                    color: Theme.surfaceText
-                }
-
-                StyledText {
-                    width: parent.width
-                    elide: Text.ElideRight
-                    text: [dash.player?.trackArtist, dash.player?.trackAlbum].filter(t => !!t).join(" · ")
-                    font.pixelSize: Theme.fontSizeLarge
-                    color: Theme.withAlpha(Theme.surfaceText, 0.7)
-                }
-
-                CfBlade {
-                    width: parent.width
-                    interactive: dash.player?.canSeek ?? false
-                    value: dash.player && dash.player.length > 0 ? dash.player.position / dash.player.length : 0
-                    onMoved: to => dash.player.position = to * dash.player.length
-                }
-
-                Item {
-                    width: parent.width
-                    height: 20
-
-                    StyledText {
-                        text: Chrono.format(Math.floor(dash.player?.position ?? 0))
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.withAlpha(Theme.surfaceText, 0.6)
-                    }
-
-                    StyledText {
-                        anchors.right: parent.right
-                        text: Chrono.format(Math.floor(dash.player?.length ?? 0))
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.withAlpha(Theme.surfaceText, 0.6)
-                    }
-                }
-
-                Transport {
-                    iconSize: 32
-                }
-
-                // Which player this is; with more than one open, pick between them here.
-                StyledText {
-                    visible: MprisController.availablePlayers.length <= 1
-                    text: dash.tx(dash.player?.identity ?? "")
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.withAlpha(Theme.surfaceText, 0.5)
-                }
-
-                Row {
-                    visible: MprisController.availablePlayers.length > 1
-                    spacing: 8
-
-                    Repeater {
-                        model: MprisController.availablePlayers
-
-                        Chip {
-                            required property var modelData
-                            icon: "graphic_eq"
-                            label: modelData.identity ?? "Player"
-                            on: modelData === dash.player
-                            onClicked: MprisController.setActivePlayer(modelData)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ── timer and stopwatch ──
-    Component {
-        id: timeView
-
-        Row {
-            spacing: 12
-            height: 266
-
-            Card {
-                width: (parent.width - 12) / 2
-                height: parent.height
-
-                // Both cards start their figures at the same height, so the two clocks line up.
-                Column {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: 28
-                    spacing: 14
-
-                    StyledText {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: Chrono.format(Chrono.timerLeft)
-                        font.pixelSize: 52
-                        font.weight: Font.DemiBold
-                        color: Chrono.timerActive ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.5)
-                    }
-
-                    CfBlade {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        meter: true
-                        width: 300
-                        value: Chrono.timerTotal > 0 ? Chrono.timerLeft / Chrono.timerTotal : 0
-                    }
-
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8
-
-                        Repeater {
-                            model: [5, 15, 25, 45]
-
-                            Chip {
-                                required property int modelData
-                                label: modelData + " min"
-                                onClicked: Chrono.startTimer(modelData * 60)
-                            }
-                        }
-                    }
-
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8
-
-                        Chip {
-                            icon: Chrono.timerRunning ? "pause" : "play_arrow"
-                            label: Chrono.timerRunning ? "Pause" : "Resume"
-                            on: Chrono.timerRunning
-                            onClicked: Chrono.toggleTimer()
-                        }
-
-                        Chip {
-                            icon: "restart_alt"
-                            label: "Clear"
-                            onClicked: Chrono.resetTimer()
-                        }
-                    }
-                }
-            }
-
-            Card {
-                width: (parent.width - 12) / 2
-                height: parent.height
-
-                Column {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: 28
-                    spacing: 14
-
-                    StyledText {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: Chrono.format(Chrono.stopwatchSeconds)
-                        font.pixelSize: 52
-                        font.weight: Font.DemiBold
-                        color: Chrono.stopwatchRunning ? Theme.primary : Theme.surfaceText
-                    }
-
-                    StyledText {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: dash.tx("Stopwatch")
-                        font.pixelSize: Theme.fontSizeMedium
-                        color: Theme.withAlpha(Theme.surfaceText, 0.6)
-                    }
-
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8
-
-                        Chip {
-                            icon: Chrono.stopwatchRunning ? "pause" : "play_arrow"
-                            label: Chrono.stopwatchRunning ? "Stop" : "Start"
-                            on: Chrono.stopwatchRunning
-                            onClicked: Chrono.toggleStopwatch()
-                        }
-
-                        Chip {
-                            icon: "restart_alt"
-                            label: "Reset"
-                            onClicked: Chrono.resetStopwatch()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ── forecast ──
-    Component {
-        id: weatherView
-
-        Column {
-            id: forecast
-            spacing: dash.gap
-
-            readonly property var weather: WeatherService.weather
-            readonly property var days: (weather.forecast ?? []).slice(0, 7)
-            readonly property var hours: (weather.hourlyForecast ?? []).slice(0, 9)
-
-            function degrees(celsius) {
-                if (celsius === undefined || celsius === null)
-                    return "--";
-                return Math.round(SettingsData.useFahrenheit ? celsius * 9 / 5 + 32 : celsius) + "°";
-            }
-
-            Row {
-                spacing: dash.gap
-                height: 120
-
-                Card {
-                    width: dash.col * 2 + dash.gap
-                    height: parent.height
-
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 18
-
-                        DankIcon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: forecast.weather.available ? WeatherService.getWeatherIcon(forecast.weather.wCode) : "cloud_off"
-                            size: 64
-                            color: Theme.primary
-                        }
-
-                        Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-
-                            StyledText {
-                                text: forecast.weather.available ? WeatherService.currentTempText(false) : "--"
-                                font.pixelSize: 34
-                                font.weight: Font.DemiBold
-                                color: Theme.surfaceText
-                            }
-
-                            StyledText {
-                                text: dash.tx(forecast.weather.available ? WeatherService.getWeatherCondition(forecast.weather.wCode) : "No weather data")
-                                font.pixelSize: Theme.fontSizeLarge
-                                color: Theme.withAlpha(Theme.surfaceText, 0.8)
-                            }
-
-                            StyledText {
-                                text: dash.tx(forecast.weather.city ?? "")
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.withAlpha(Theme.surfaceText, 0.55)
-                            }
-                        }
-                    }
-                }
-
-                Card {
-                    width: dash.col
-                    height: parent.height
-
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width
-                        spacing: 6
-
-                        Repeater {
-                            model: [
-                                {
-                                    "icon": "humidity_percentage",
-                                    "label": "Humidity",
-                                    "value": forecast.weather.humidity !== undefined ? forecast.weather.humidity + "%" : "--"
-                                },
-                                {
-                                    "icon": "air",
-                                    "label": "Wind",
-                                    "value": forecast.weather.wind ?? "--"
-                                },
-                                {
-                                    "icon": "wb_twilight",
-                                    "label": "Sunrise",
-                                    "value": forecast.weather.sunrise ?? "--"
-                                },
-                                {
-                                    "icon": "nights_stay",
-                                    "label": "Sunset",
-                                    "value": forecast.weather.sunset ?? "--"
-                                }
-                            ]
-
-                            Item {
-                                required property var modelData
-                                width: parent.width
-                                height: 18
-
-                                Row {
-                                    spacing: 6
-
-                                    DankIcon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        name: modelData.icon
-                                        size: 15
-                                        color: Theme.primary
-                                    }
-
-                                    StyledText {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: dash.tx(modelData.label)
-                                        font.pixelSize: Theme.fontSizeSmall
-                                        color: Theme.withAlpha(Theme.surfaceText, 0.65)
-                                    }
-                                }
-
-                                StyledText {
-                                    anchors.right: parent.right
-                                    text: dash.tx(String(modelData.value))
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    font.weight: Font.DemiBold
-                                    color: Theme.surfaceText
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // The week
-            Row {
-                id: week
-                readonly property real cardWidth: Math.floor((dash.panelWidth - 36 - 6 * 8) / 7)
-                spacing: 8
-                height: 124
-
-                Repeater {
-                    model: forecast.days
-
-                    Card {
-                        required property var modelData
-                        required property int index
-                        width: week.cardWidth
-                        height: parent.height
-
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 6
-
-                            StyledText {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: dash.tx(index === 0 ? "Today" : String(modelData.day ?? "").substring(0, 3))
-                                font.pixelSize: Theme.fontSizeSmall
-                                font.weight: Font.DemiBold
-                                color: index === 0 ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.7)
-                            }
-
-                            DankIcon {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                name: WeatherService.getWeatherIcon(modelData.wCode)
-                                size: 28
-                                color: Theme.primary
-                            }
-
-                            StyledText {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: forecast.degrees(modelData.tempMax)
-                                font.pixelSize: Theme.fontSizeMedium
-                                font.weight: Font.DemiBold
-                                color: Theme.surfaceText
-                            }
-
-                            StyledText {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: forecast.degrees(modelData.tempMin)
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.withAlpha(Theme.surfaceText, 0.55)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // The next hours
-            Card {
-                visible: forecast.hours.length > 0
-                width: dash.panelWidth - 36
-                height: 86
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 0
-
-                    Repeater {
-                        model: forecast.hours
-
-                        Column {
-                            required property var modelData
-                            width: Math.floor((dash.panelWidth - 36 - 28) / 9)
-                            spacing: 3
-
-                            StyledText {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: dash.tx(String(modelData.time ?? ""))
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.withAlpha(Theme.surfaceText, 0.55)
-                            }
-
-                            DankIcon {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                name: WeatherService.getWeatherIcon(modelData.wCode)
-                                size: 20
-                                color: Theme.primary
-                            }
-
-                            StyledText {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: forecast.degrees(modelData.temp)
-                                font.pixelSize: Theme.fontSizeSmall
-                                font.weight: Font.DemiBold
-                                color: Theme.surfaceText
-                            }
-                        }
-                    }
-                }
-            }
+        Loader {
+            source: Qt.resolvedUrl(body.files[dash.view] ?? "")
         }
     }
 
@@ -1650,7 +1101,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     spacing: 16
 
-                    DankIcon {
+                    DIcon {
                         anchors.verticalCenter: parent.verticalCenter
                         name: "chevron_left"
                         size: 24
@@ -1671,7 +1122,7 @@ PanelWindow {
                         color: Theme.withAlpha(Theme.surfaceText, 0.75)
                     }
 
-                    DankIcon {
+                    DIcon {
                         anchors.verticalCenter: parent.verticalCenter
                         name: "chevron_right"
                         size: 24

@@ -3,15 +3,15 @@ import Quickshell
 import qs.Common
 import qs.Modals.FileBrowser
 import qs.Services
+import qs.DCommon.Widgets
 import qs.Widgets
+import qs.Modules.Settings.Widgets
 
-DankFloatingWindow {
+DFloatingWindow {
     id: settingsModal
 
     property var profileBrowser: profileBrowserLoader.item
     property var wallpaperBrowser: wallpaperBrowserLoader.item
-
-    Component.onCompleted: MultimediaService.ensureProbed()
 
     function openProfileBrowser(allowStacking) {
         profileBrowserLoader.active = true;
@@ -31,13 +31,22 @@ DankFloatingWindow {
         wallpaperBrowserLoader.item.open();
     }
     property alias sidebar: sidebar
-    property int currentTabIndex: 0
+    readonly property alias modalFocusScope: contentFocusScope
+    readonly property alias focusPane: contentFocusScope.activePane
+    property string currentPage: "personalization"
+    property var pageHistory: []
+    readonly property int currentTabIndex: SettingsTabs.tabIndexForPage(currentPage)
+    readonly property string currentParentId: SettingsTabs.parentOf(currentPage)
+    readonly property string activeCategoryId: currentParentId || currentPage
+    readonly property bool isPluginPage: SettingsTabs.isPluginPage(currentPage)
+    readonly property bool canGoBack: pageHistory.length > 0 || (currentParentId !== "" && (isPluginPage || SettingsTabs.visibleLeaves(currentParentId).length > 1 || !!SettingsTabs.page(currentParentId)?.hubHeader))
     property bool shouldHaveFocus: visible
     property bool allowFocusOverride: false
-    property alias shouldBeVisible: settingsModal.visible
-    property bool isCompactMode: width < 700
+    property bool shouldBeVisible: false
+    readonly property bool readyToMap: shouldBeVisible && content.currentPageSettled
+    readonly property bool searchFocused: sidebar.searchFocused
+    property bool isCompactMode: width < SettingsMetrics.compactBreakpoint
     property bool menuVisible: !isCompactMode
-    property bool enableAnimations: true
     property string keybindSearchQuery: ""
 
     signal closingModal
@@ -47,26 +56,73 @@ DankFloatingWindow {
             visible = false;
         }
         CompositorService.closeNiriOverviewOnWindowFocus();
-        visible = true;
+        if (!shouldBeVisible && isCompactMode)
+            menuVisible = true;
+        shouldBeVisible = true;
+        if (readyToMap)
+            visible = true;
+        if (backingWindowVisible)
+            contentFocusScope.Window.window?.requestActivate();
     }
 
     function hide() {
+        shouldBeVisible = false;
         visible = false;
     }
 
     function toggle() {
-        if (visible && backingWindowVisible) {
+        const shown = visible ? backingWindowVisible : shouldBeVisible;
+        if (shown) {
             hide();
             return;
         }
         show();
     }
 
+    function setPage(pageId: string): bool {
+        const resolved = SettingsTabs.resolvePage(pageId);
+        if (!resolved)
+            return false;
+        pageHistory = [];
+        currentPage = resolved;
+        return true;
+    }
+
+    // Rows report how they were activated; buttons and cards fall back to the focused control's reason
+    function navigateTo(pageId, keyboard = contentFocusScope.keyboardDriven()): bool {
+        const resolved = SettingsTabs.resolvePage(pageId);
+        if (!resolved || resolved === currentPage)
+            return false;
+        content.rememberFocus();
+        pageHistory = pageHistory.concat([currentPage]);
+        currentPage = resolved;
+        focusCurrentPage(keyboard);
+        return true;
+    }
+
+    function setPageName(name: string): bool {
+        return setPage(name);
+    }
+
+    function goBack(keyboard = contentFocusScope.keyboardDriven()) {
+        if (pageHistory.length > 0) {
+            const history = pageHistory.slice();
+            const target = history.pop();
+            pageHistory = history;
+            currentPage = target;
+            focusCurrentPage(keyboard);
+            return;
+        }
+        if (!currentParentId)
+            return;
+        currentPage = currentParentId;
+        focusCurrentPage(keyboard);
+    }
+
     function setTabIndex(tabIndex: int) {
         if (tabIndex < 0)
             return;
-        currentTabIndex = tabIndex;
-        sidebar.autoExpandForTab(tabIndex);
+        setPage(SettingsTabs.pageForTabIndex(tabIndex));
     }
 
     function showWithTab(tabIndex: int) {
@@ -75,12 +131,12 @@ DankFloatingWindow {
     }
 
     function showWithTabName(tabName: string) {
-        setTabIndex(sidebar.resolveTabIndex(tabName));
+        setPage(tabName);
         show();
     }
 
     function resolveTabIndex(tabName: string): int {
-        return sidebar.resolveTabIndex(tabName);
+        return SettingsTabs.tabIndexForPage(SettingsTabs.resolvePage(tabName));
     }
 
     function showKeybindsSearch(query: string) {
@@ -89,51 +145,85 @@ DankFloatingWindow {
     }
 
     function openPluginSettings(pluginId: string) {
-        setTabIndex(12);
-        content.openPluginSettings(pluginId);
+        if (!pluginId)
+            return;
+        setPage(SettingsTabs.pluginPrefix + pluginId);
+        show();
+    }
+
+    function focusCurrentPage(keyboard = true) {
+        contentFocusScope.focusContent(keyboard);
+    }
+
+    function focusSidebar() {
+        contentFocusScope.focusSidebar();
+    }
+
+    function focusSearch() {
+        contentFocusScope.focusSearch();
     }
 
     function toggleMenu() {
-        enableAnimations = true;
         menuVisible = !menuVisible;
+        if (menuVisible)
+            focusSearch();
     }
 
     objectName: "settingsModal"
     title: I18n.tr("Settings", "settings window title")
-    minimumSize: Qt.size(500, 400)
-    implicitWidth: 900
-    implicitHeight: screen ? Math.min(940, screen.height - 100) : 940
+    minimumSize: Qt.size(SettingsMetrics.windowMinWidth, SettingsMetrics.windowMinHeight)
+    implicitWidth: SettingsMetrics.windowWidth
+    implicitHeight: heightWithin(SettingsMetrics.windowHeight, SettingsMetrics.pagePaddingH * 2 + Theme.spacingL)
     visible: false
 
     onClosed: hide()
 
+    onReadyToMapChanged: {
+        if (readyToMap)
+            visible = true;
+    }
+
     onIsCompactModeChanged: {
-        enableAnimations = false;
-        if (!isCompactMode) {
+        if (!isCompactMode)
             menuVisible = true;
-        }
-        Qt.callLater(() => {
-            enableAnimations = true;
-        });
+    }
+
+    onCurrentPageChanged: {
+        if (isCompactMode)
+            menuVisible = false;
     }
 
     onVisibleChanged: {
         if (!visible) {
+            pageHistory = [];
             closingModal();
         } else {
+            const revision = contentFocusScope.focusRevision;
             Qt.callLater(() => {
-                sidebar.focusSearch();
+                if (settingsModal.visible && revision === contentFocusScope.focusRevision)
+                    settingsModal.focusSearch();
             });
         }
     }
 
-    Loader {
-        active: settingsModal.visible
-        sourceComponent: Component {
-            Ref {
-                service: CupsService
-            }
+    Connections {
+        target: PluginService
+
+        function onPluginListUpdated() {
+            if (!settingsModal.isPluginPage)
+                return;
+            if (PluginService.availablePluginsList.length === 0)
+                return;
+            if (PluginService.availablePlugins[SettingsTabs.pluginIdOf(settingsModal.currentPage)])
+                return;
+            settingsModal.setPage("plugins");
         }
+    }
+
+    // The printers page is gated on the cups capability, which core only probes once someone subscribes.
+    Ref {
+        service: CupsService
+        active: settingsModal.visible
     }
 
     LazyLoader {
@@ -146,14 +236,10 @@ DankFloatingWindow {
             allowStacking: true
             parentModal: settingsModal
             browserTitle: I18n.tr("Select Profile Image", "profile image file browser title")
-            browserIcon: "person"
-            browserType: "profile"
+            bucket: "profile"
             showHiddenFiles: true
-            fileExtensions: ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif", "*.webp", "*.jxl", "*.avif", "*.heif", "*.exr"]
-            onFileSelected: path => {
-                PortalService.setProfileImage(path);
-                close();
-            }
+            filters: ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif", "*.webp", "*.jxl", "*.avif", "*.heif", "*.exr", "*.svg"]
+            onAccepted: paths => PortalService.setProfileImage(paths[0])
             onDialogClosed: () => {
                 allowStacking = true;
                 Qt.callLater(() => profileBrowserLoader.active = false);
@@ -171,15 +257,13 @@ DankFloatingWindow {
             allowStacking: true
             parentModal: settingsModal
             browserTitle: I18n.tr("Select Wallpaper", "wallpaper file browser title")
-            browserIcon: "wallpaper"
-            browserType: "wallpaper"
+            bucket: "wallpaper"
             showHiddenFiles: true
-            fileExtensions: ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif", "*.webp", "*.jxl", "*.avif", "*.heif", "*.exr"]
-            onFileSelected: path => {
-                SessionData.setWallpaper(path);
+            filters: ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif", "*.webp", "*.jxl", "*.avif", "*.heif", "*.exr", "*.svg"]
+            onAccepted: paths => {
+                SessionData.setWallpaper(paths[0]);
                 SessionData.wallpaperCyclingFolderPath = "";
                 SessionData.saveSettings();
-                close();
             }
             onDialogClosed: () => {
                 allowStacking = true;
@@ -188,14 +272,12 @@ DankFloatingWindow {
         }
     }
 
-    FocusScope {
+    SettingsPaneNavigation {
         id: contentFocusScope
 
-        // Coreflame: the same trim the panels carry, so Settings belongs to the form.
-        CfOrnament {
-            anchors.fill: parent
-            z: 1000
-        }
+        sidebar: sidebar
+        content: content
+        parentModal: settingsModal
 
         LayoutMirroring.enabled: I18n.isRtl
         LayoutMirroring.childrenInherit: true
@@ -203,96 +285,49 @@ DankFloatingWindow {
         anchors.fill: parent
         focus: true
 
+        Keys.onBackPressed: event => {
+            settingsModal.goBack();
+            event.accepted = true;
+        }
+
         Column {
             anchors.fill: parent
             spacing: 0
 
-            Item {
+            DWindowHeader {
+                id: titleBar
                 width: parent.width
-                height: 48
                 z: 10
-
-                MouseArea {
-                    anchors.fill: parent
-                    onPressed: windowControls.tryStartMove()
-                    onDoubleClicked: windowControls.tryToggleMaximize()
-                }
-
-                Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.spacingL
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.spacingM
-
-                    DankActionButton {
-                        visible: settingsModal.isCompactMode
-                        circular: false
-                        iconName: "menu"
-                        iconSize: Theme.iconSize - 4
-                        iconColor: Theme.surfaceText
-                        anchors.verticalCenter: parent.verticalCenter
-                        onClicked: () => {
-                            settingsModal.toggleMenu();
-                        }
-                    }
-
-                    DankIcon {
-                        name: "settings"
-                        size: Theme.iconSize
-                        color: Theme.primary
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    StyledText {
-                        text: I18n.tr("Settings")
-                        font.pixelSize: Theme.fontSizeXLarge
-                        color: Theme.surfaceText
-                        font.weight: Font.Medium
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                Row {
-                    anchors.right: parent.right
-                    anchors.rightMargin: Theme.spacingM
-                    anchors.top: parent.top
-                    anchors.topMargin: Theme.spacingM
-                    spacing: Theme.spacingXS
-
-                    DankActionButton {
-                        visible: windowControls.canMaximize
-                        circular: false
-                        iconName: settingsModal.maximized ? "fullscreen_exit" : "fullscreen"
-                        iconSize: Theme.iconSize - 4
-                        iconColor: Theme.surfaceText
-                        onClicked: windowControls.tryToggleMaximize()
-                    }
-
-                    DankActionButton {
-                        circular: false
-                        iconName: "close"
-                        iconSize: Theme.iconSize - 4
-                        iconColor: Theme.surfaceText
-                        onClicked: settingsModal.hide()
-                    }
-                }
+                controls: windowControls
+                title: I18n.tr("Settings")
+                onCloseRequested: settingsModal.hide()
             }
 
-            Rectangle {
+            Item {
                 id: readOnlyBanner
 
-                property bool showBanner: (SettingsData._isReadOnly && SettingsData._hasUnsavedChanges) || (SessionData._isReadOnly && SessionData._hasUnsavedChanges)
+                property bool showBanner: (SettingsData.isReadOnly && SettingsData.unsavedUserChanges) || (SessionData._isReadOnly && SessionData._hasUnsavedChanges)
 
                 width: parent.width
                 height: showBanner ? bannerContent.implicitHeight + Theme.spacingM * 2 : 0
-                color: Theme.floatingWindowNestedSurface
                 visible: showBanner
                 clip: true
 
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.leftMargin: body.paneInset
+                    anchors.rightMargin: body.paneInset
+                    radius: SettingsMetrics.paneRadius
+                    color: SettingsMetrics.paneColor
+                    border.width: Theme.layerOutlineWidth
+                    border.color: Theme.outlineMedium
+                }
+
                 Behavior on height {
                     NumberAnimation {
-                        duration: Theme.shortDuration
-                        easing.type: Theme.standardEasing
+                        duration: SettingsMetrics.fadeDuration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.expressiveCurves.expressiveEffects
                     }
                 }
 
@@ -301,12 +336,13 @@ DankFloatingWindow {
 
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: Theme.spacingL
-                    anchors.rightMargin: Theme.spacingM
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: Theme.spacingM
+                    anchors.leftMargin: body.paneInset + SettingsMetrics.panePadding
+                    anchors.rightMargin: body.paneInset + SettingsMetrics.panePadding
                     spacing: Theme.spacingM
 
-                    DankIcon {
+                    DIcon {
                         name: "info"
                         size: Theme.iconSize
                         color: Theme.warning
@@ -320,19 +356,19 @@ DankFloatingWindow {
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceText
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.max(100, parent.width - (copySettingsButton.visible ? copySettingsButton.width + Theme.spacingM : 0) - (copySessionButton.visible ? copySessionButton.width + Theme.spacingM : 0) - Theme.spacingM * 2 - Theme.iconSize)
+                        width: Math.max(SettingsMetrics.bannerTextMinWidth, parent.width - (copySettingsButton.visible ? copySettingsButton.width + Theme.spacingM : 0) - (copySessionButton.visible ? copySessionButton.width + Theme.spacingM : 0) - Theme.spacingM * 2 - Theme.iconSize)
                         wrapMode: Text.WordWrap
                     }
 
-                    DankButton {
+                    DButton {
                         id: copySettingsButton
 
-                        visible: SettingsData._isReadOnly && SettingsData._hasUnsavedChanges
+                        visible: SettingsData.isReadOnly && SettingsData.unsavedUserChanges
                         text: "settings.json"
                         iconName: "content_copy"
                         backgroundColor: Theme.primary
                         textColor: Theme.primaryText
-                        buttonHeight: 32
+                        buttonHeight: Theme.buttonHeightXS
                         horizontalPadding: Theme.spacingM
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: {
@@ -341,7 +377,7 @@ DankFloatingWindow {
                         }
                     }
 
-                    DankButton {
+                    DButton {
                         id: copySessionButton
 
                         visible: SessionData._isReadOnly && SessionData._hasUnsavedChanges
@@ -349,7 +385,7 @@ DankFloatingWindow {
                         iconName: "content_copy"
                         backgroundColor: Theme.primary
                         textColor: Theme.primaryText
-                        buttonHeight: 32
+                        buttonHeight: Theme.buttonHeightXS
                         horizontalPadding: Theme.spacingM
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: {
@@ -361,8 +397,13 @@ DankFloatingWindow {
             }
 
             Item {
+                id: body
+
+                readonly property real paneInset: SettingsMetrics.paneMargin
+                readonly property real paneSpace: width - sidebar.width - paneInset
+
                 width: parent.width
-                height: parent.height - 48 - readOnlyBanner.height
+                height: parent.height - titleBar.height - readOnlyBanner.height
                 clip: true
 
                 SettingsSidebar {
@@ -370,34 +411,61 @@ DankFloatingWindow {
 
                     anchors.left: parent.left
                     width: settingsModal.isCompactMode ? parent.width : sidebar.implicitWidth
-                    visible: settingsModal.isCompactMode ? settingsModal.menuVisible : true
                     parentModal: settingsModal
-                    currentIndex: settingsModal.currentTabIndex
-                    onTabChangeRequested: tabIndex => {
-                        settingsModal.currentTabIndex = tabIndex;
-                        if (settingsModal.isCompactMode) {
-                            settingsModal.enableAnimations = true;
+                    visible: !settingsModal.isCompactMode || settingsModal.menuVisible
+                    currentPage: settingsModal.currentPage
+                    activeCategoryId: settingsModal.activeCategoryId
+                    onPageRequested: pageId => {
+                        settingsModal.setPage(pageId);
+                        if (settingsModal.isCompactMode)
                             settingsModal.menuVisible = false;
-                        }
                     }
                 }
 
-                Item {
-                    anchors.left: settingsModal.isCompactMode ? (settingsModal.menuVisible ? sidebar.right : parent.left) : sidebar.right
-                    anchors.right: parent.right
-                    height: parent.height
+                Rectangle {
+                    id: contentPane
+                    enabled: !settingsModal.isCompactMode || !settingsModal.menuVisible
+
+                    x: {
+                        const flip = I18n.isRtl ? -1 : 1;
+                        if (settingsModal.isCompactMode)
+                            return (settingsModal.menuVisible ? body.width * flip : 0) + body.paneInset;
+                        const slack = (body.paneSpace - width) / 2;
+                        return (I18n.isRtl ? body.paneInset : sidebar.width) + slack;
+                    }
+                    width: settingsModal.isCompactMode ? body.width - body.paneInset * 2 : Math.min(body.paneSpace, SettingsMetrics.paneMaxWidth)
+                    height: body.height - body.paneInset
+                    radius: SettingsMetrics.paneRadius
+                    color: SettingsMetrics.paneColor
+                    border.width: Theme.layerOutlineWidth
+                    border.color: Theme.outlineMedium
                     clip: true
+
+                    Behavior on x {
+                        enabled: settingsModal.isCompactMode && !SettingsData.reduceMotion && Theme.currentAnimationSpeed !== SettingsData.AnimationSpeed.None
+                        NumberAnimation {
+                            duration: SettingsMetrics.transitionDuration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.expressiveCurves.standard
+                        }
+                    }
 
                     SettingsContent {
                         id: content
 
                         anchors.fill: parent
                         parentModal: settingsModal
-                        currentIndex: settingsModal.currentTabIndex
+                        currentPage: settingsModal.currentPage
                     }
                 }
             }
         }
+    }
+
+    // Coreflame: the same trim the panels carry, so Settings belongs to the form.
+    CfOrnament {
+        anchors.fill: parent
+        z: 1000
     }
 
     FloatingWindowControls {

@@ -14,16 +14,12 @@ Singleton {
     readonly property string tier: !Form.active ? "stock" : ((Form.reaver || saver) ? "still" : (onBattery ? "lean" : "full"))
     readonly property bool still: tier === "still"
 
-    // Reshapes one of Theme's duration tables for the current form and tier.
-    function adjust(base) {
-        if (!base || tier === "stock")
-            return base;
+    // Reshapes Theme's base animation duration (DMS 2.0 derives every other duration from it)
+    // for the current form and tier. Still caps the longest animation at 140 ms.
+    function base(ms) {
+        if (tier === "stock")
+            return ms;
         const factor = tier === "lean" ? 0.75 : (Form.khaslana ? 1.15 : 1.0);
-        const out = {};
-        for (const key in base) {
-            const cap = !still ? Infinity : (key === "extraLong" ? 300 : 140);
-            out[key] = Math.round(Math.min(base[key] * factor, cap));
-        }
-        return out;
+        return Math.round(still ? Math.min(ms * factor, 140) : ms * factor);
     }
 }

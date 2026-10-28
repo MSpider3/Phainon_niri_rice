@@ -13,7 +13,7 @@ figure.sprite = Sprite(figure.image);
 figure.sprite.SetX(screen_w / 2 - figure.image.GetWidth() / 2);
 figure.sprite.SetY(screen_h * 0.42 - figure.image.GetHeight() / 2);
 
-words.image = Image.Text("climb, fall, climb again", 0.478, 0.416, 0.659, 0.8, "Sans 12");
+words.image = Image.Text("the flame-chase will not end...", 0.478, 0.416, 0.659, 0.8, "Sans 12");
 words.sprite = Sprite(words.image);
 words.sprite.SetX(screen_w / 2 - words.image.GetWidth() / 2);
 words.sprite.SetY(screen_h * 0.78);

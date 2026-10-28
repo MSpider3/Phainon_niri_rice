@@ -5,7 +5,7 @@ import qs.Common
 
 // "He Who Bears the World Must Burn": the one large animation, played once when the form changes.
 //   Phainon      dawn rises from the bottom of the screen and passes.
-//   Khaslana     the screen darkens, a ring of gold opens from the island, the world breaks into
+//   Khaslana     the screen darkens under his caption, a ring of gold opens from the island, the world breaks into
 //                slabs for a few frames, one white-gold flash, and it is over.
 //   Flame Reaver the black tide: blocks of dark fill the screen left to right, then let go.
 // It takes no input, loads only for its own duration, and is skipped on Power Saver.
@@ -127,6 +127,21 @@ PanelWindow {
                 height: parent.height / 6
                 color: index % 3 === 0 ? Qt.rgba(0.83, 0.69, 0.29, 0.5) : (index % 3 === 1 ? Qt.rgba(0.79, 0.2, 0.2, 0.42) : Qt.rgba(0.02, 0.02, 0.05, 0.85))
             }
+        }
+
+        // His breaking point, held while the screen is dark and gone before the flash.
+        Text {
+            visible: text !== "" && fx.t > 0.08 && fx.t < 0.72
+            anchors.centerIn: parent
+            width: parent.width * 0.8
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: Form.transformCaption
+            font.family: Form.display(Theme.fontFamily)
+            font.pixelSize: 34
+            font.letterSpacing: 1.5
+            color: "#F1E9C9"
+            opacity: Math.min(1, (fx.t - 0.08) * 8, (0.72 - fx.t) * 8)
         }
 
         Rectangle {

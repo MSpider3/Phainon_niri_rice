@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 
-// Line-drawn sigils for the twelve Titans of Amphoreus and the thirteenth, used in place of generic
+// Line-drawn sigils for the twelve Titans of Amphoreus and the thirteenth (plus the Flame Reaver's mask), used in place of generic
 // icons on panel headers and tiles. Each glyph is stroked SVG path data on a 24x24 grid, scaled to
 // `size`; `strokeWidth` is in grid units, so it scales with the glyph. An unknown name draws nothing.
 Item {
@@ -38,6 +38,8 @@ Item {
         // Zagreus, Coin of Whimsy: a slanted S-curl with a small coin in each curl
         "trickery": "M4.5 12 A5.303 5.303 0 1 1 12 12 A5.303 5.303 0 1 0 19.5 12 M6.65 8.25 a1.6 1.6 0 1 0 3.2 0 a1.6 1.6 0 1 0 -3.2 0 M14.15 15.75 a1.6 1.6 0 1 0 3.2 0 a1.6 1.6 0 1 0 -3.2 0",
         // Cyrene, the thirteenth: a figure-eight with six thorns
+        // The Flame Reaver's faceplate: a shield-shaped mask, two eye slits, three slats below
+        "mask": "M4.5 2.5 H19.5 V11 Q19.5 18 12 21.5 Q4.5 18 4.5 11 Z M7.5 8.5 L10.5 9.5 M16.5 8.5 L13.5 9.5 M9 13 V17 M12 13 V19 M15 13 V17",
         "genesis": "M12 12 C5.5 8.5 7 4.5 12 4.5 C17 4.5 18.5 8.5 12 12 C5.5 15.5 7 19.5 12 19.5 C17 19.5 18.5 15.5 12 12 Z M12 4.5 V2 M12 19.5 V22 M7.7 7 L4.5 5.2 M16.3 7 L19.5 5.2 M7.7 17 L4.5 18.8 M16.3 17 L19.5 18.8"
     })
     readonly property string pathData: glyphs.hasOwnProperty(name) ? glyphs[name] : ""

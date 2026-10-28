@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the Phainon rice on top of DankMaterialShell 1.6.2 and switches to it.
+# Installs the Phainon rice on top of DankMaterialShell 2.0 and switches to it.
 # Your DMS settings, plugins and niri keybinds stay as they are; `sh coreflame.sh off`
 # takes you back to stock DMS with the theme you had before.
 #
@@ -8,8 +8,8 @@
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-cfg="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell"
-state="${XDG_STATE_HOME:-$HOME/.local/state}/DankMaterialShell"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/dms"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/dms"
 fonts="${XDG_DATA_HOME:-$HOME/.local/share}/fonts/coreflame"
 walls="$HOME/Pictures/Phainon"
 
@@ -21,8 +21,8 @@ if [ ! -f "$cfg/settings.json" ]; then
     exit 1
 fi
 case "$(dms version 2> /dev/null || dms --version 2> /dev/null)" in
-*1.6.*) ;;
-*) echo "Note: this rice is built on the DMS 1.6.2 interface. Another DMS version may not work with it." >&2 ;;
+*2.*) ;;
+*) echo "Note: this rice is built on the DMS 2.0 interface. Another DMS version may not work with it." >&2 ;;
 esac
 
 echo "Fonts -> $fonts"
@@ -34,12 +34,13 @@ echo "Wallpapers -> $walls"
 mkdir -p "$walls"
 cp -n "$here"/wallpapers/* "$walls/"
 
-# Opening (first shell start after a boot) and closing (restart / shut down) cinematics.
+# Opening (first shell start after a boot) and closing (restart / shut down) cinematics,
+# and the lock-screen video.
 # A video already there is kept, so your own clips survive a reinstall.
 cine="${XDG_CONFIG_HOME:-$HOME/.config}/coreflame/cinematics"
 echo "Cinematics -> $cine"
 mkdir -p "$cine"
-cp -n "$here"/cinematics/*.mkv "$cine/"
+cp -n "$here"/cinematics/*.mkv "$here"/cinematics/lock.mp4 "$cine/"
 
 echo "Theme and form-switch plugin -> $cfg"
 mkdir -p "$cfg/themes/coreflame" "$cfg/plugins/coreflameForms"

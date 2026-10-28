@@ -3,10 +3,15 @@ pragma ComponentBehavior: Bound
 
 import QtCore
 import QtQuick
+import "../DCommon/Common/Shape.js" as Shape
+import "../DCommon/Common/Surface.js" as Surface
+import "../DCommon/Common/Contrast.js" as Contrast
+import "../DCommon/Common/Accents.js" as Accents
+import "../DCommon/Common/Tonal.js" as Tonal
 import Quickshell
 import Quickshell.Io
 import qs.Common
-import qs.DankCommon.Common as DankCommon
+import qs.DCommon.Common as DCommon
 import qs.Services
 import qs.Modules.Greetd
 import "StockThemes.js" as StockThemes
@@ -16,10 +21,11 @@ Singleton {
     id: root
     readonly property var log: Log.scoped("Theme")
 
-    readonly property string stateDir: Paths.strip(StandardPaths.writableLocation(StandardPaths.GenericCacheLocation).toString()) + "/DankMaterialShell"
+    readonly property string stateDir: Paths.strip(StandardPaths.writableLocation(StandardPaths.GenericCacheLocation).toString()) + "/dms"
     readonly property bool envDisableMatugen: Quickshell.env("DMS_DISABLE_MATUGEN") === "1" || Quickshell.env("DMS_DISABLE_MATUGEN") === "true"
-    readonly property string defaultFontFamily: "Inter Variable"
+    readonly property string defaultFontFamily: "Google Sans Flex"
     readonly property string defaultMonoFontFamily: "Fira Code"
+    readonly property string defaultDisplayFontFamily: "DM Serif Display"
 
     readonly property real popupDistance: {
         if (typeof SettingsData === "undefined")
@@ -44,58 +50,14 @@ Singleton {
     readonly property string homeDir: Paths.strip(StandardPaths.writableLocation(StandardPaths.HomeLocation))
     readonly property string configDir: Paths.strip(StandardPaths.writableLocation(StandardPaths.ConfigLocation))
     readonly property string shellDir: Paths.strip(Qt.resolvedUrl(".").toString()).replace("/Common/", "")
-    readonly property string wallpaperPath: {
-        if (typeof SessionData === "undefined")
-            return "";
-
-        var monitors = SessionData.monitorWallpapers;
-        if (SessionData.perMonitorWallpaper) {
-            var screens = Quickshell.screens;
-            if (screens.length > 0) {
-                var s = screens[0];
-                return monitors[s.name] || (s.model ? monitors[s.model] : "") || SessionData.wallpaperPath;
-            }
-        }
-
-        return SessionData.wallpaperPath;
+    readonly property string wallpaperSourceScreen: {
+        const screens = Quickshell.screens;
+        const target = SettingsData.matugenTargetMonitor;
+        return screens.find(screen => screen.name === target)?.name ?? screens[0]?.name ?? "";
     }
-    readonly property string rawWallpaperPath: {
-        if (typeof SessionData === "undefined")
-            return "";
-
-        var monitors = SessionData.monitorWallpapers;
-        if (SessionData.perMonitorWallpaper) {
-            var screens = Quickshell.screens;
-            if (screens.length > 0) {
-                var targetMonitor = (typeof SettingsData !== "undefined" && SettingsData.matugenTargetMonitor && SettingsData.matugenTargetMonitor !== "") ? SettingsData.matugenTargetMonitor : screens[0].name;
-
-                var targetMonitorExists = false;
-                for (var i = 0; i < screens.length; i++) {
-                    if (screens[i].name === targetMonitor) {
-                        targetMonitorExists = true;
-                        break;
-                    }
-                }
-
-                if (!targetMonitorExists)
-                    targetMonitor = screens[0].name;
-
-                var s = null;
-                for (var j = 0; j < screens.length; j++) {
-                    if (screens[j].name === targetMonitor) {
-                        s = screens[j];
-                        break;
-                    }
-                }
-
-                if (s)
-                    return monitors[s.name] || (s.model ? monitors[s.model] : "") || SessionData.wallpaperPath;
-                return monitors[targetMonitor] || SessionData.wallpaperPath;
-            }
-        }
-
-        return SessionData.wallpaperPath;
-    }
+    readonly property string wallpaperPath: SessionData.getMonitorWallpaper(Quickshell.screens[0]?.name ?? "")
+    readonly property string rawWallpaperPath: SessionData.getMonitorWallpaper(wallpaperSourceScreen)
+    readonly property string materialWallpaperSeed: SessionData.getMonitorMaterialWallpaper(wallpaperSourceScreen).seed
 
     property bool matugenAvailable: false
     property var workerRunning: false
@@ -106,6 +68,11 @@ Singleton {
     property var _pendingGenerateParams: null
     property int _colorsRetryCount: 0
     property double _lastGenerateMs: 0
+    property string _matugenRunKey: ""
+    property var _workerStderr: []
+    property bool _workerStderrUsage: false
+    readonly property int _workerStderrKeep: 8
+    readonly property string themeTroubleshootingUrl: "https://duxlabs.dev/docs/dms/application-themes#troubleshooting"
 
     property bool blurLayersActive: false
     property bool matugenToastSuppressed: false
@@ -142,51 +109,20 @@ Singleton {
     property var customThemeRawData: null
     readonly property var currentThemeVariants: customThemeRawData?.variants || null
     readonly property string currentThemeId: customThemeRawData?.id || ""
+    readonly property string currentThemeLabel: {
+        if (currentTheme === dynamic)
+            return I18n.tr("Dynamic", "dynamic theme name");
+        const name = getThemeColors(currentThemeName)?.name || customThemeRawData?.name;
+        if (name)
+            return name;
+        const file = typeof SettingsData !== "undefined" ? SettingsData.customThemeFile : "";
+        return file ? file.split("/").pop() : "";
+    }
 
     Component.onCompleted: {
-        Quickshell.execDetached(["mkdir", "-p", stateDir]);
         Proc.runCommand("matugenCheck", ["sh", "-c", "command -v matugen"], (output, code) => {
             matugenAvailable = (code === 0) && !envDisableMatugen;
-            const isGreeterMode = (typeof SessionData !== "undefined" && SessionData.isGreeterMode);
-
-            if (!matugenAvailable || isGreeterMode) {
-                return;
-            }
-
-            if (colorsFileLoadFailed && currentTheme === dynamic && rawWallpaperPath) {
-                log.info("Matugen now available, regenerating colors for dynamic theme");
-                const isLight = (typeof SessionData !== "undefined" && SessionData.isLightMode);
-                const iconTheme = (typeof SettingsData !== "undefined" && SettingsData.iconTheme) ? SettingsData.iconTheme : "System Default";
-                const selectedMatugenType = (typeof SettingsData !== "undefined" && SettingsData.matugenScheme) ? SettingsData.matugenScheme : "scheme-tonal-spot";
-                if (rawWallpaperPath.startsWith("#")) {
-                    setDesiredTheme("hex", rawWallpaperPath, isLight, iconTheme, selectedMatugenType);
-                } else {
-                    setDesiredTheme("image", rawWallpaperPath, isLight, iconTheme, selectedMatugenType);
-                }
-                return;
-            }
-
-            const isLight = (typeof SessionData !== "undefined" && SessionData.isLightMode);
-            const iconTheme = (typeof SettingsData !== "undefined" && SettingsData.iconTheme) ? SettingsData.iconTheme : "System Default";
-
-            if (currentTheme === dynamic) {
-                if (rawWallpaperPath) {
-                    const selectedMatugenType = (typeof SettingsData !== "undefined" && SettingsData.matugenScheme) ? SettingsData.matugenScheme : "scheme-tonal-spot";
-                    if (rawWallpaperPath.startsWith("#")) {
-                        setDesiredTheme("hex", rawWallpaperPath, isLight, iconTheme, selectedMatugenType);
-                    } else {
-                        setDesiredTheme("image", rawWallpaperPath, isLight, iconTheme, selectedMatugenType);
-                    }
-                }
-            } else if (currentTheme !== "custom") {
-                const darkTheme = StockThemes.getThemeByName(currentTheme, false);
-                const lightTheme = StockThemes.getThemeByName(currentTheme, true);
-                if (darkTheme && darkTheme.primary) {
-                    const stockColors = buildMatugenColorsFromTheme(darkTheme, lightTheme);
-                    const themeData = isLight ? lightTheme : darkTheme;
-                    setDesiredTheme("hex", themeData.primary, isLight, iconTheme, themeData.matugen_type, stockColors);
-                }
-            }
+            generateSystemThemesFromCurrentTheme();
         }, 0);
         if (typeof SessionData !== "undefined") {
             SessionData.isLightModeChanged.connect(root.onLightModeChanged);
@@ -264,12 +200,16 @@ Singleton {
         return {
             "name": name,
             "primary": getMatugenColorForMode(colorMode, "primary", "#42a5f5"),
+            "inversePrimary": getMatugenColorForMode(colorMode, "inverse_primary", getMatugenColorForMode(colorMode === "light" ? "dark" : "light", "primary", "#6750a4")),
             "primaryText": getMatugenColorForMode(colorMode, "on_primary", "#ffffff"),
             "primaryContainer": getMatugenColorForMode(colorMode, "primary_container", "#1976d2"),
+            "onPrimaryContainer": getMatugenColorForMode(colorMode, "on_primary_container"),
             "secondary": getMatugenColorForMode(colorMode, "secondary", "#8ab4f8"),
-            "secondaryContainer": getMatugenColorForMode(colorMode, "secondary_container", getMatugenColorForMode(colorMode, "surface_container_high", "#292b2f")),
+            "secondaryContainer": getMatugenColorForMode(colorMode, "secondary_container"),
+            "onSecondaryContainer": getMatugenColorForMode(colorMode, "on_secondary_container"),
             "tertiary": getMatugenColorForMode(colorMode, "tertiary", "#efb8c8"),
             "tertiaryContainer": getMatugenColorForMode(colorMode, "tertiary_container", getMatugenColorForMode(colorMode, "surface_container_high", "#292b2f")),
+            "onTertiaryContainer": getMatugenColorForMode(colorMode, "on_tertiary_container"),
             "surface": getMatugenColorForMode(colorMode, "surface", "#1a1c1e"),
             "surfaceText": getMatugenColorForMode(colorMode, "on_background", "#e3e8ef"),
             "surfaceVariant": getMatugenColorForMode(colorMode, "surface_variant", "#44464f"),
@@ -284,6 +224,9 @@ Singleton {
             "surfaceContainerHigh": getMatugenColorForMode(colorMode, "surface_container_high", "#292b2f"),
             "surfaceContainerHighest": getMatugenColorForMode(colorMode, "surface_container_highest", "#343740"),
             "error": getMatugenColorForMode(colorMode, "error", "#F2B8B5"),
+            "errorText": getMatugenColorForMode(colorMode, "on_error"),
+            "errorContainer": getMatugenColorForMode(colorMode, "error_container"),
+            "errorContainerText": getMatugenColorForMode(colorMode, "on_error_container"),
             "warning": "#FF9800",
             "info": "#2196F3",
             "success": "#4CAF50"
@@ -317,10 +260,12 @@ Singleton {
 
     readonly property var _matugenSchemeDefs: [({
                 "value": "scheme-tonal-spot",
+                "spec2025": true,
                 "label": I18n.tr("Tonal Spot", "matugen color scheme option"),
                 "description": I18n.tr("Balanced palette with focused accents (default).")
             }), ({
                 "value": "scheme-vibrant",
+                "spec2025": true,
                 "label": I18n.tr("Vibrant", "matugen color scheme option"),
                 "description": I18n.tr("Lively palette with saturated accents.")
             }), ({
@@ -329,6 +274,7 @@ Singleton {
                 "description": I18n.tr("Derives colors that closely match the underlying image.")
             }), ({
                 "value": "scheme-expressive",
+                "spec2025": true,
                 "label": I18n.tr("Expressive", "matugen color scheme option"),
                 "description": I18n.tr("Vibrant palette with playful saturation.")
             }), ({
@@ -345,6 +291,7 @@ Singleton {
                 "description": I18n.tr("Minimal palette built around a single hue.")
             }), ({
                 "value": "scheme-neutral",
+                "spec2025": true,
                 "label": I18n.tr("Neutral", "matugen color scheme option"),
                 "description": I18n.tr("Muted palette with subdued, calming tones.")
             }), ({
@@ -403,12 +350,13 @@ Singleton {
     property color secondary: currentThemeData.secondary
     property color tertiary: currentThemeData.tertiary || currentThemeData.secondary
     property color surface: currentThemeData.surface
-    property color surfaceText: currentThemeData.surfaceText
+    // The Flame Reaver's text is bone white, his secondary text ash, instead of the theme's grey.
+    property color surfaceText: Form.reaver && !isLightMode ? "#E6DCC8" : currentThemeData.surfaceText
     property color surfaceVariant: currentThemeData.surfaceVariant
-    property color surfaceVariantText: currentThemeData.surfaceVariantText
+    property color surfaceVariantText: Form.reaver && !isLightMode ? "#A89E8B" : currentThemeData.surfaceVariantText
     property color surfaceTint: currentThemeData.surfaceTint
     property color background: currentThemeData.background
-    property color backgroundText: currentThemeData.backgroundText
+    property color backgroundText: Form.reaver && !isLightMode ? "#E6DCC8" : currentThemeData.backgroundText
     property color outline: currentThemeData.outline
     property color outlineVariant: currentThemeData.outlineVariant || withAlpha(outline, 0.6)
     property color surfaceContainerLowest: currentThemeData.surfaceContainerLowest || blend(surfaceContainer, surface, 1.2)
@@ -418,18 +366,103 @@ Singleton {
     property color surfaceContainerHighest: currentThemeData.surfaceContainerHighest || surfaceContainerHigh
     property color surfaceBright: currentThemeData.surfaceBright || (isLightMode ? surface : surfaceContainerHighest)
     property color surfaceDim: currentThemeData.surfaceDim || (isLightMode ? surfaceContainer : background)
-    property color primaryContainer: currentThemeData.primaryContainer || blend(surfaceContainerHigh, primary, 0.45)
+    readonly property color hostSurface: typeof SettingsData === "undefined" ? surface : surfaceRoleColor(SettingsData.hostSurfaceColor, SettingsData.hostSurfaceCustomColor, surface)
+    readonly property color cardSurface: typeof SettingsData === "undefined" ? surfaceContainer : surfaceRoleColor(SettingsData.cardSurfaceColor, SettingsData.cardSurfaceCustomColor, surfaceContainer)
+    readonly property color chipSurface: typeof SettingsData === "undefined" ? surfaceContainerHigh : surfaceRoleColor(SettingsData.chipSurfaceColor, SettingsData.chipSurfaceCustomColor, surfaceContainerHigh)
+    readonly property color chipSurfaceNested: typeof SettingsData === "undefined" ? surfaceContainerHighest : surfaceRoleColor(SettingsData.chipSurfaceNestedColor, SettingsData.chipSurfaceNestedCustomColor, surfaceContainerHighest)
+    readonly property real containerSaturation: typeof SettingsData === "undefined" ? 1 : SettingsData.containerSaturation / 100
+    readonly property real containerTint: (currentThemeData.containerTint ?? Tonal.defaultTint(surfaceContainer)) * containerSaturation
+    property color primaryContainer: currentThemeData.softPrimaryContainer || Tonal.softContainer(primary, surfaceContainer, containerTint)
     property color secondaryContainer: currentThemeData.secondaryContainer || blend(surfaceContainerHigh, secondary, 0.35)
     property color tertiaryContainer: currentThemeData.tertiaryContainer || blend(surfaceContainerHigh, tertiary, 0.35)
+    readonly property real selectedContainerTint: currentThemeData.selectedContainerTint ?? 0.2
+    readonly property bool themedSelectedContainer: !!currentThemeData.secondaryContainer && Contrast.isTonal(secondaryContainer, onSecondaryContainer) && Contrast.isTonal(secondaryContainer, surfaceText)
+    readonly property color selectedContainer: currentThemeData.selectedContainer || (themedSelectedContainer ? secondaryContainer : Contrast.subtleTint(surfaceContainerHigh, primary, surfaceText, selectedContainerTint))
+    readonly property color accentOnSelectedContainer: currentThemeData.accentOnSelectedContainer || (Contrast.ratio(primary, selectedContainer) >= 3 ? primary : onSelectedContainer)
+    readonly property color accentOnPrimaryContainer: currentThemeData.accentOnPrimaryContainer || (Contrast.ratio(primary, primaryContainer) >= 3 ? primary : onPrimaryContainer)
+    readonly property var accents: Accents.derive(primary, isLightMode, currentThemeData.accents ?? null)
+    property color inversePrimary: currentThemeData.inversePrimary || wallpaperThemeData(!isLightMode).primary
+    property color inverseSurface: currentThemeData.inverseSurface || surfaceText
+    property color inverseOnSurface: currentThemeData.inverseOnSurface || surface
 
-    property color onSurface: surfaceText
-    property color onSurfaceVariant: surfaceVariantText
-    property color onPrimary: primaryText
+    // on<Role> next to a <role> property parses as a signal handler; only Binding elements assign them.
+    property color onSurface
+    property color onSurfaceVariant
+    property color onPrimary
+    property color onPrimaryContainer
+    property color onSecondaryContainer
+    property color onError
+    property color onErrorContainer
+    property color onTertiaryContainer
+    property color onSelectedContainer
     property color onSurface_12: withAlpha(onSurface, 0.12)
     property color onSurface_38: withAlpha(onSurface, 0.38)
     property color onSurfaceVariant_30: withAlpha(onSurfaceVariant, 0.30)
+    property color onSurfaceVariant_40
+    readonly property list<QtObject> roleBindings: [
+        Binding {
+            target: root
+            property: "onSurfaceVariant_40"
+            value: root.withAlpha(root.onSurfaceVariant, 0.4)
+        },
+        Binding {
+            target: root
+            property: "onError"
+            value: root.currentThemeData.errorText || root.getMatugenColor("on_error", root.surface)
+        },
+        Binding {
+            target: root
+            property: "onErrorContainer"
+            value: root.currentThemeData.errorContainerText || root.getMatugenColor("on_error_container", root.blend(root.surfaceText, root.error, 0.5))
+        },
+        Binding {
+            target: root
+            property: "onSurface"
+            value: root.surfaceText
+        },
+        Binding {
+            target: root
+            property: "onSurfaceVariant"
+            value: root.surfaceVariantText
+        },
+        Binding {
+            target: root
+            property: "onPrimary"
+            value: root.primaryText
+        },
+        Binding {
+            target: root
+            property: "onPrimaryContainer"
+            value: {
+                const explicit = root.currentThemeData.onPrimaryContainer || root.currentThemeData.primaryContainerText;
+                if (!explicit)
+                    return Contrast.readableOn(root.primaryContainer, root.onContainerCandidates);
+                if (root.currentThemeData.softPrimaryContainer)
+                    return explicit;
+                return Contrast.readableOn(root.primaryContainer, [Qt.color(explicit)].concat(root.onContainerCandidates));
+            }
+        },
+        Binding {
+            target: root
+            property: "onSecondaryContainer"
+            value: root.currentThemeData.onSecondaryContainer || Contrast.readableOn(root.secondaryContainer, root.onContainerCandidates)
+        },
+        Binding {
+            target: root
+            property: "onTertiaryContainer"
+            value: root.currentThemeData.onTertiaryContainer || Contrast.readableOn(root.tertiaryContainer, root.onContainerCandidates)
+        },
+        Binding {
+            target: root
+            property: "onSelectedContainer"
+            value: root.currentThemeData.onSelectedContainer || (root.currentThemeData.selectedContainer ? Contrast.readableOn(root.selectedContainer, root.onContainerCandidates) : root.themedSelectedContainer ? root.onSecondaryContainer : root.surfaceText)
+        }
+    ]
+    readonly property var onContainerCandidates: [surfaceText, surface, contrastLight, contrastDark]
+    readonly property real tonalTintAlpha: 0.16
 
     property color error: currentThemeData.error || "#F2B8B5"
+    property color errorContainer: currentThemeData.errorContainer || getMatugenColor("error_container", blend(surfaceContainerHigh, error, 0.35))
     property color warning: currentThemeData.warning || "#FF9800"
     property color info: currentThemeData.info || "#2196F3"
     property color tempWarning: "#ff9933"
@@ -455,10 +488,10 @@ Singleton {
     readonly property bool transparentBlurLayers: blurLayersActive && !foregroundLayers
     readonly property real foregroundLayerTransparency: typeof SettingsData === "undefined" ? 1.0 : (SettingsData.foregroundLayerTransparency ?? 1.0)
     readonly property bool notificationForegroundLayers: typeof SettingsData === "undefined" || (SettingsData.notificationForegroundLayers ?? true)
-    readonly property color readableSurface: withAlpha(surfaceContainer, popupTransparency)
-    readonly property color readableSurfaceHigh: withAlpha(surfaceContainerHigh, popupTransparency)
-    readonly property color floatingSurface: foregroundLayers ? readableSurface : withAlpha(readableSurface, 0)
-    readonly property color floatingSurfaceHigh: foregroundLayers ? withAlpha(surfaceContainerHigh, foregroundLayerTransparency) : withAlpha(surfaceContainerHigh, 0)
+    readonly property color readableSurface: withAlpha(hostSurface, popupTransparency)
+    readonly property color readableSurfaceHigh: withAlpha(cardSurface, popupTransparency)
+    readonly property color floatingSurface: readableSurface
+    readonly property color floatingSurfaceHigh: foregroundColor(cardSurface)
     readonly property bool floatingWindowSynced: typeof SettingsData === "undefined" || (SettingsData.floatingWindowSyncGlobal ?? true)
     readonly property real floatingWindowTransparency: {
         if (typeof SettingsData === "undefined" || floatingWindowSynced)
@@ -471,33 +504,101 @@ Singleton {
             return foregroundLayerTransparency;
         return SettingsData.floatingWindowForegroundTransparency ?? 1.0;
     }
-    readonly property color floatingWindowSurface: withAlpha(surfaceContainer, floatingWindowTransparency)
-    readonly property color floatingWindowSurfaceHigh: floatingWindowForegroundLayers ? withAlpha(surfaceContainerHigh, floatingWindowForegroundTransparency) : withAlpha(surfaceContainerHigh, 0)
+    readonly property real foregroundAlpha: Surface.foregroundAlpha(foregroundLayers || !blurLayersActive, foregroundLayerTransparency)
+    readonly property real floatingWindowForegroundAlpha: Surface.foregroundAlpha(floatingWindowForegroundLayers, floatingWindowForegroundTransparency)
+
+    function isFloatingWindow(item) {
+        return Surface.isFloatingWindow(item);
+    }
+
+    function accent(name) {
+        return accents[name] ?? null;
+    }
+
+    function foregroundColor(baseColor, floatingWindow = false) {
+        return blendAlpha(baseColor, floatingWindow ? floatingWindowForegroundAlpha : foregroundAlpha);
+    }
+
+    readonly property color floatingWindowSurface: withAlpha(hostSurface, floatingWindowTransparency)
+    readonly property color floatingWindowSurfaceHigh: foregroundColor(cardSurface, true)
     readonly property color floatingWindowNestedSurface: floatingWindowSurfaceHigh
-    readonly property color notepadWindowSurface: withAlpha(surfaceContainer, notepadTransparency)
+    readonly property color notepadWindowSurface: withAlpha(hostSurface, notepadTransparency)
     readonly property color nestedSurface: floatingSurfaceHigh
     readonly property color notificationFloatingSurface: notificationForegroundLayers ? readableSurface : withAlpha(readableSurface, 0)
     readonly property color notificationFloatingSurfaceHigh: notificationForegroundLayers ? readableSurfaceHigh : withAlpha(readableSurfaceHigh, 0)
     readonly property color notificationNestedSurface: notificationFloatingSurfaceHigh
-    readonly property real blurLayerOutlineOpacity: Math.max(0, Math.min(1, typeof SettingsData === "undefined" ? 0.12 : (SettingsData.blurLayerOutlineOpacity ?? 0.12)))
+    readonly property color notificationChipSurface: notificationForegroundLayers ? chipSurface : withAlpha(onSurface, stateLayerFocus)
+    readonly property real blurLayerOutlineOpacity: Math.max(0, Math.min(1, typeof SettingsData === "undefined" ? 0 : (SettingsData.blurLayerOutlineOpacity ?? 0)))
     readonly property real layerOutlineOpacity: blurLayerOutlineOpacity
     readonly property int layerOutlineWidth: layerOutlineOpacity > 0 ? 1 : 0
-    readonly property real floatingWindowFieldAlpha: floatingWindowTransparency
-    readonly property color floatingWindowFieldColor: withAlpha(surfaceContainerHigh, floatingWindowFieldAlpha)
-    readonly property real popupFieldAlpha: {
-        if (transparentBlurLayers)
-            return 0.28;
-        if (blurForegroundLayers)
-            return Math.max(foregroundLayerTransparency, 0.62);
-        return popupTransparency;
-    }
-    readonly property color popupFieldColor: withAlpha(surfaceContainerHigh, popupFieldAlpha)
+    readonly property real floatingWindowFieldAlpha: floatingWindowForegroundAlpha
+    readonly property color floatingWindowFieldColor: withAlpha(chipSurface, floatingWindowFieldAlpha)
+    readonly property real popupFieldAlpha: foregroundAlpha
+    readonly property color popupFieldColor: withAlpha(chipSurface, popupFieldAlpha)
     readonly property color popupFieldBorderColor: withAlpha(outline, blurLayersActive ? 0.16 : layerOutlineOpacity)
     readonly property color popupFieldFocusedBorderColor: withAlpha(primary, blurLayersActive ? 0.72 : 1.0)
     readonly property color floatingWindowFieldBorderColor: popupFieldBorderColor
     readonly property color floatingWindowFieldFocusedBorderColor: popupFieldFocusedBorderColor
     property color surfaceTextHover: withAlpha(surfaceText, 0.08)
     property color surfaceTextAlpha: withAlpha(surfaceText, 0.3)
+
+    function surfaceRoleColor(mode, customColor, fallback) {
+        switch (mode ?? "default") {
+        case "default":
+            return fallback;
+        case "custom":
+            return Qt.color(customColor);
+        default:
+            return roleColor(mode);
+        }
+    }
+
+    readonly property real avatarRingWidth: SettingsData.avatarRing === "none" ? 0 : outlineWidth
+    readonly property color avatarRingColor: SettingsData.avatarRing === "outline" ? surfaceVariant : roleColor(SettingsData.avatarRing)
+
+    function wallpaperThemeData(light) {
+        switch (currentTheme) {
+        case "dynamic":
+            return buildExtractedDynamicMode(light ? "light" : "dark", "Dynamic");
+        case "custom":
+            return resolveCustomTheme(customThemeRawData, light ? "light" : "dark");
+        default:
+            return StockThemes.getThemeByName(currentTheme, light);
+        }
+    }
+
+    function wallpaperPalette(light = isLightMode) {
+        if (light === isLightMode)
+            return {
+                primary,
+                secondary,
+                tertiary,
+                primaryContainer,
+                secondaryContainer,
+                tertiaryContainer,
+                inversePrimary,
+                contrastDark,
+                surface
+            };
+        const data = wallpaperThemeData(light);
+        const container = Qt.color(data.surfaceContainer);
+        const high = Qt.color(data.surfaceContainerHigh);
+        const primaryColor = Qt.color(data.primary);
+        const secondaryColor = Qt.color(data.secondary);
+        const tertiaryColor = Qt.color(data.tertiary || data.secondary);
+        const tint = (data.containerTint ?? Tonal.defaultTint(container)) * containerSaturation;
+        return {
+            primary: primaryColor,
+            secondary: secondaryColor,
+            tertiary: tertiaryColor,
+            primaryContainer: data.softPrimaryContainer || Tonal.softContainer(primaryColor, container, tint),
+            secondaryContainer: data.secondaryContainer || blend(high, secondaryColor, 0.35),
+            tertiaryContainer: data.tertiaryContainer || blend(high, tertiaryColor, 0.35),
+            inversePrimary: data.inversePrimary || wallpaperThemeData(!light).primary,
+            contrastDark,
+            surface: data.surface
+        };
+    }
 
     function roleColor(mode) {
         switch (mode) {
@@ -570,48 +671,19 @@ Singleton {
         }
     }
 
-    readonly property color ccTileInactiveBg: transparentBlurLayers ? withAlpha(surfaceContainerHigh, 0.16) : (foregroundLayers ? withAlpha(surfaceContainerHigh, blurLayersActive ? Math.min(popupTransparency, 0.24) : popupTransparency) : withAlpha(surfaceContainer, 0))
-    readonly property color ccPillInactiveBg: transparentBlurLayers ? withAlpha(surfaceContainerHigh, 0.08) : nestedSurface
-    readonly property color ccPillInactiveHoverBg: transparentBlurLayers ? withAlpha(primary, 0.10) : primaryPressed
-    readonly property color ccSliderTrackColor: transparentBlurLayers ? surfaceText : surfaceContainerHigh
-    readonly property real ccSliderTrackOpacity: transparentBlurLayers ? 0.18 : popupTransparency
+    readonly property color ccPillInactiveBg: transparentBlurLayers ? withAlpha(cardSurface, 0.08) : nestedSurface
+    readonly property color ccIconBoxInactiveBg: transparentBlurLayers ? withAlpha(chipSurfaceNested, 0.16) : foregroundColor(chipSurfaceNested)
 
     readonly property color ccTileActiveText: {
         switch (SettingsData.controlCenterTileColorMode) {
         case "primaryContainer":
-            return primary;
+            return onPrimaryContainer;
         case "secondary":
             return surfaceText;
         case "surfaceVariant":
             return surfaceText;
         default:
             return primaryText;
-        }
-    }
-
-    readonly property color ccTileInactiveIcon: {
-        switch (SettingsData.controlCenterTileColorMode) {
-        case "primaryContainer":
-            return primary;
-        case "secondary":
-            return secondary;
-        case "surfaceVariant":
-            return surfaceText;
-        default:
-            return primary;
-        }
-    }
-
-    readonly property color ccTileRing: {
-        switch (SettingsData.controlCenterTileColorMode) {
-        case "primaryContainer":
-            return withAlpha(primary, 0.22);
-        case "secondary":
-            return withAlpha(surfaceText, 0.22);
-        case "surfaceVariant":
-            return withAlpha(surfaceText, 0.22);
-        default:
-            return withAlpha(primaryText, 0.22);
         }
     }
 
@@ -631,7 +703,7 @@ Singleton {
     readonly property color buttonText: {
         switch (SettingsData.buttonColorMode) {
         case "primaryContainer":
-            return primary;
+            return onPrimaryContainer;
         case "secondary":
             return surfaceText;
         case "surfaceVariant":
@@ -890,53 +962,15 @@ Singleton {
         };
     }
 
-    readonly property var animationDurations: [
-        {
-            "shorter": 0,
-            "short": 0,
-            "medium": 0,
-            "long": 0,
-            "extraLong": 0
-        },
-        {
-            "shorter": 50,
-            "short": 75,
-            "medium": 150,
-            "long": 250,
-            "extraLong": 500
-        },
-        {
-            "shorter": 100,
-            "short": 150,
-            "medium": 300,
-            "long": 500,
-            "extraLong": 1000
-        },
-        {
-            "shorter": 150,
-            "short": 225,
-            "medium": 450,
-            "long": 750,
-            "extraLong": 1500
-        },
-        {
-            "shorter": 200,
-            "short": 300,
-            "medium": 600,
-            "long": 1000,
-            "extraLong": 2000
-        }
-    ]
+    readonly property int currentAnimationBaseDuration: Motion.base(typeof SettingsData !== "undefined" ? SettingsData.animationDuration : 250)
+    readonly property int currentAnimationSpeed: currentAnimationBaseDuration > 0 ? SettingsData.AnimationSpeed.Custom : SettingsData.AnimationSpeed.None
 
-    readonly property int currentAnimationSpeed: typeof SettingsData !== "undefined" ? SettingsData.animationSpeed : SettingsData.AnimationSpeed.Short
-    readonly property var currentDurations: Motion.adjust(animationDurations[currentAnimationSpeed] || animationDurations[SettingsData.AnimationSpeed.Short])
-
-    readonly property int shorterDuration: (typeof SettingsData !== "undefined" && SettingsData.animationSpeed === SettingsData.AnimationSpeed.Custom) ? SettingsData.customAnimationDuration : currentDurations.shorter
-    readonly property int shortDuration: (typeof SettingsData !== "undefined" && SettingsData.animationSpeed === SettingsData.AnimationSpeed.Custom) ? SettingsData.customAnimationDuration : currentDurations.short
+    readonly property int shorterDuration: Math.round(currentAnimationBaseDuration * 0.2)
+    readonly property int shortDuration: Math.round(currentAnimationBaseDuration * 0.3)
     readonly property bool snapListModelChanges: shortDuration <= 0
-    readonly property int mediumDuration: (typeof SettingsData !== "undefined" && SettingsData.animationSpeed === SettingsData.AnimationSpeed.Custom) ? SettingsData.customAnimationDuration : currentDurations.medium
-    readonly property int longDuration: (typeof SettingsData !== "undefined" && SettingsData.animationSpeed === SettingsData.AnimationSpeed.Custom) ? SettingsData.customAnimationDuration : currentDurations.long
-    readonly property int extraLongDuration: (typeof SettingsData !== "undefined" && SettingsData.animationSpeed === SettingsData.AnimationSpeed.Custom) ? SettingsData.customAnimationDuration : currentDurations.extraLong
+    readonly property int mediumDuration: Math.round(currentAnimationBaseDuration * 0.6)
+    readonly property int longDuration: currentAnimationBaseDuration
+    readonly property int extraLongDuration: currentAnimationBaseDuration * 2
     readonly property int standardEasing: Easing.OutCubic
     readonly property int emphasizedEasing: Easing.OutQuart
 
@@ -949,7 +983,10 @@ Singleton {
         "standardDecel": [0, 0, 0, 1, 1, 1],
         "expressiveFastSpatial": [0.42, 1.67, 0.21, 0.9, 1, 1],
         "expressiveDefaultSpatial": [0.38, 1.21, 0.22, 1, 1, 1],
-        "expressiveEffects": [0.34, 0.8, 0.34, 1, 1, 1]
+        "expressiveSlowSpatial": [0.39, 1.29, 0.35, 0.98, 1, 1],
+        "expressiveFastEffects": [0.31, 0.94, 0.34, 1, 1, 1],
+        "expressiveEffects": [0.34, 0.8, 0.34, 1, 1, 1],
+        "expressiveSlowEffects": [0.34, 0.88, 0.34, 1, 1, 1]
     }
 
     // Theme is the canonical access point for animation variant state. The
@@ -962,23 +999,26 @@ Singleton {
     readonly property list<real> variantModalExitCurve: AnimVariants.variantModalExitCurve
     readonly property list<real> variantPopoutEnterCurve: AnimVariants.variantPopoutEnterCurve
     readonly property list<real> variantPopoutExitCurve: AnimVariants.variantPopoutExitCurve
+    readonly property list<real> variantPopoutResizeCurve: AnimVariants.variantPopoutResizeCurve
     readonly property real variantEnterDurationFactor: AnimVariants.variantEnterDurationFactor
     readonly property real variantExitDurationFactor: AnimVariants.variantExitDurationFactor
     readonly property real variantOpacityDurationScale: AnimVariants.variantOpacityDurationScale
     readonly property bool isDirectionalEffect: AnimVariants.isDirectionalEffect
+    readonly property bool isFluidEffect: AnimVariants.isFluidEffect
     readonly property bool isDepthEffect: AnimVariants.isDepthEffect
     readonly property bool isConnectedEffect: AnimVariants.isConnectedEffect
     readonly property real connectedCornerRadius: {
         if (typeof SettingsData === "undefined")
             return 12;
-        return FrameTransitionState.effectiveConnectedFrameModeActive ? SettingsData.frameRounding : cornerRadius;
+        return FrameTransitionState.effectiveConnectedFrameModeActive ? SettingsData.frameRounding : windowRadius;
     }
     readonly property color connectedSurfaceColor: {
         if (typeof SettingsData === "undefined")
-            return withAlpha(surfaceContainer, popupTransparency);
-        return isConnectedEffect ? withAlpha(SettingsData.effectiveFrameColor, SettingsData.frameOpacity) : withAlpha(surfaceContainer, popupTransparency);
+            return withAlpha(hostSurface, popupTransparency);
+        return isConnectedEffect ? frameSurfaceColor : withAlpha(hostSurface, popupTransparency);
     }
-    readonly property real connectedSurfaceRadius: isConnectedEffect ? connectedCornerRadius : cornerRadius
+    readonly property color frameSurfaceColor: typeof SettingsData === "undefined" ? withAlpha(hostSurface, popupTransparency) : withAlpha(SettingsData.frameSurfaceBase, SettingsData.frameSurfaceOpacity)
+    readonly property real connectedSurfaceRadius: isConnectedEffect ? connectedCornerRadius : windowRadius
     readonly property bool connectedSurfaceBlurEnabled: (typeof SettingsData === "undefined") ? true : (!isConnectedEffect || SettingsData.frameBlurEnabled)
     readonly property real effectScaleCollapsed: AnimVariants.effectScaleCollapsed
     readonly property real effectAnimOffset: AnimVariants.effectAnimOffset
@@ -992,25 +1032,6 @@ Singleton {
         return AnimVariants.variantCloseInterval(baseDuration);
     }
 
-    readonly property var animationPresetDurations: {
-        "none": 0,
-        "short": 250,
-        "medium": 500,
-        "long": 750
-    }
-
-    readonly property int currentAnimationBaseDuration: {
-        if (typeof SettingsData === "undefined")
-            return 500;
-
-        if (SettingsData.animationSpeed === SettingsData.AnimationSpeed.Custom) {
-            return SettingsData.customAnimationDuration;
-        }
-
-        const presetMap = [0, 250, 500, 750];
-        return presetMap[SettingsData.animationSpeed] !== undefined ? presetMap[SettingsData.animationSpeed] : 500;
-    }
-
     readonly property var expressiveDurations: {
         if (typeof SettingsData === "undefined") {
             return {
@@ -1020,7 +1041,10 @@ Singleton {
                 "extraLarge": 1000,
                 "expressiveFastSpatial": 350,
                 "expressiveDefaultSpatial": 500,
-                "expressiveEffects": 200
+                "expressiveSlowSpatial": 650,
+                "expressiveFastEffects": 150,
+                "expressiveEffects": 200,
+                "expressiveSlowEffects": 300
             };
         }
 
@@ -1032,21 +1056,35 @@ Singleton {
             "extraLarge": baseDuration * 2.0,
             "expressiveFastSpatial": baseDuration * 0.7,
             "expressiveDefaultSpatial": baseDuration,
-            "expressiveEffects": baseDuration * 0.4
+            "expressiveSlowSpatial": baseDuration * 1.3,
+            "expressiveFastEffects": baseDuration * 0.3,
+            "expressiveEffects": baseDuration * 0.4,
+            "expressiveSlowEffects": baseDuration * 0.6
         };
     }
 
     // Expressive spatial spring presets ([stiffness, damping], unit mass) tuned to a
     // 500ms reference transition; runtime values scale via springPreset().
+    readonly property real morphSettleEpsilon: 0.02
+    readonly property real morphLayerEpsilon: 0.002
+
     readonly property var springSpecs: {
         "expressive": [560, 37],
         "fast": [220, 23],
-        "default": [100, 16]
+        "default": [300, 24]
     }
 
     // Damping multipliers for the user-facing spring bounce setting:
     // crisp settles without overshoot, playful adds visible bounce.
     readonly property var springDampingScales: [1.22, 1.0, 0.82]
+
+    // Must stay under the 16px shadow motion padding every fluid surface reserves.
+    readonly property var fluidOvershootLimits: [0, 4, 10]
+    readonly property real fluidOvershootLimit: {
+        if (typeof SettingsData === "undefined" || springMotionDisabled)
+            return 0;
+        return fluidOvershootLimits[Math.round(SettingsData.springBounce)] ?? 4;
+    }
 
     function tunedSpring(spec, baseDuration) {
         const f = Math.max(0.05, baseDuration / 500);
@@ -1064,26 +1102,12 @@ Singleton {
 
     readonly property bool springMotionDisabled: currentAnimationBaseDuration <= 0
 
-    readonly property int notificationAnimationBaseDuration: {
-        if (typeof SettingsData === "undefined")
-            return 200;
-        if (SettingsData.notificationAnimationSpeed === SettingsData.AnimationSpeed.None)
-            return 0;
-        if (SettingsData.notificationAnimationSpeed === SettingsData.AnimationSpeed.Custom)
-            return SettingsData.notificationCustomAnimationDuration;
-        const presetMap = [0, 200, 400, 600];
-        return presetMap[SettingsData.notificationAnimationSpeed] ?? 200;
-    }
+    readonly property int notificationAnimationBaseDuration: typeof SettingsData !== "undefined" ? SettingsData.notificationAnimationDuration : 200
 
-    readonly property int notificationEnterDuration: {
-        const base = notificationAnimationBaseDuration;
-        return base === 0 ? 0 : Math.round(base * 0.875);
-    }
-
-    readonly property int notificationExitDuration: {
-        const base = notificationAnimationBaseDuration;
-        return base === 0 ? 0 : Math.round(base * 0.75);
-    }
+    readonly property int notificationEnterDuration: Math.round(notificationAnimationBaseDuration * 0.875)
+    readonly property int notificationExitDuration: Math.round(notificationAnimationBaseDuration * 0.75)
+    readonly property int notificationStackShiftDuration: notificationAnimationBaseDuration
+    readonly property int notificationStackStaggerDuration: Math.round(notificationAnimationBaseDuration * 0.5)
 
     readonly property int notificationExpandDuration: {
         const base = notificationAnimationBaseDuration;
@@ -1095,15 +1119,12 @@ Singleton {
         return base === 0 ? 0 : Math.round(base * 0.85);
     }
 
-    readonly property int notificationInlineExpandDuration: notificationAnimationBaseDuration === 0 ? 0 : 185
-    readonly property int notificationInlineCollapseDuration: notificationAnimationBaseDuration === 0 ? 0 : 150
+    readonly property int notificationInlineExpandDuration: Math.round(notificationAnimationBaseDuration * 0.925)
+    readonly property int notificationInlineCollapseDuration: Math.round(notificationAnimationBaseDuration * 0.75)
 
-    readonly property real notificationIconSizeNormal: 56
-    readonly property real notificationIconSizeCompact: 48
-    readonly property real notificationExpandedIconSizeNormal: 48
-    readonly property real notificationExpandedIconSizeCompact: 40
-    readonly property real notificationActionMinWidth: 48
-    readonly property real notificationButtonCornerRadius: cornerRadius / 2
+    readonly property real notificationExpandedIconSizeNormal: avatarSize
+    readonly property real notificationExpandedIconSizeCompact: avatarSize
+    readonly property real notificationButtonCornerRadius: cornerRadiusFull
     readonly property real notificationHoverRevealMargin: spacingXL
     readonly property real notificationContentSpacing: spacingXS
     readonly property real notificationCardPadding: spacingM
@@ -1117,77 +1138,118 @@ Singleton {
     readonly property int popoutAnimationDuration: {
         if (typeof SettingsData === "undefined")
             return 150;
-        if (SettingsData.syncComponentAnimationSpeeds) {
+        if (SettingsData.syncComponentAnimationSpeeds)
             return Math.min(currentAnimationBaseDuration, 1000);
-        }
-        const presetMap = [0, 150, 300, 500];
-        if (SettingsData.popoutAnimationSpeed === SettingsData.AnimationSpeed.Custom)
-            return SettingsData.popoutCustomAnimationDuration;
-        return presetMap[SettingsData.popoutAnimationSpeed] ?? 150;
+        return SettingsData.popoutAnimationDuration;
     }
 
     readonly property int modalAnimationDuration: {
         if (typeof SettingsData === "undefined")
             return 150;
-        if (SettingsData.syncComponentAnimationSpeeds) {
+        if (SettingsData.syncComponentAnimationSpeeds)
             return Math.min(currentAnimationBaseDuration, 1000);
-        }
-        const presetMap = [0, 150, 300, 500];
-        if (SettingsData.modalAnimationSpeed === SettingsData.AnimationSpeed.Custom)
-            return SettingsData.modalCustomAnimationDuration;
-        return presetMap[SettingsData.modalAnimationSpeed] ?? 150;
+        return SettingsData.modalAnimationDuration;
     }
 
-    property real cornerRadius: {
-        if (typeof SessionData !== "undefined" && SessionData.isGreeterMode && typeof GreetdSettings !== "undefined") {
-            return GreetdSettings.cornerRadius;
-        }
-        return typeof SettingsData !== "undefined" ? Form.radius(SettingsData.cornerRadius) : 12;
+    readonly property real radiusStrength: typeof SettingsData !== "undefined" ? SettingsData.radiusStrength : 50
+    // Coreflame: Khaslana and Flame Reaver use near-square corners everywhere.
+    readonly property real fixedRadius: Form.active && !Form.phainon ? (Form.khaslana ? 2 : 0) : (typeof SettingsData !== "undefined" && SettingsData.radiusMode === "fixed" ? SettingsData.fixedRadius : -1)
+    readonly property real shapeScale: fixedRadius >= 0 ? fixedRadius / Shape.corners.m : Shape.scaleForStrength(radiusStrength)
+    readonly property real cornerRadius: cornerRadiusM
+    readonly property real cornerRadiusXXS: Shape.radius("xxs", shapeScale, fixedRadius)
+    readonly property real cornerRadiusXS: Shape.radius("xs", shapeScale, fixedRadius)
+    readonly property real cornerRadiusS: Shape.radius("s", shapeScale, fixedRadius)
+    readonly property real cornerRadiusM: Shape.radius("m", shapeScale, fixedRadius)
+    readonly property real cornerRadiusL: Shape.radius("l", shapeScale, fixedRadius)
+    readonly property real cornerRadiusLIncreased: Shape.radius("lIncreased", shapeScale, fixedRadius)
+    readonly property real cornerRadiusXL: Shape.radius("xl", shapeScale, fixedRadius)
+    readonly property real cornerRadiusXLIncreased: Shape.radius("xlIncreased", shapeScale, fixedRadius)
+    readonly property real cornerRadiusXXL: Shape.radius("xxl", shapeScale, fixedRadius)
+    readonly property real cornerRadiusFull: fixedRadius >= 0 ? fixedRadius : (shapeScale > 0 ? 9999 : 0)
+    readonly property real cornerRadiusSmall: cornerRadiusS
+    readonly property real cornerRadiusLarge: cornerRadiusL
+    readonly property int compositorRadiusOverride: {
+        if (typeof SettingsData === "undefined")
+            return -1;
+        if (!CompositorService.supportsLayoutConfig)
+            return -1;
+        const override = SettingsData[CompositorService.configKey + "LayoutRadiusOverride"];
+        return override === undefined ? -1 : override;
     }
+    readonly property real windowRadius: compositorRadiusOverride >= 0 ? compositorRadiusOverride : cornerRadiusL
+
+    function scaledRadius(radius, limit) {
+        return Shape.scaledRadius(radius, limit, shapeScale, fixedRadius);
+    }
+
+    function fullRadius(width, height) {
+        return Shape.fullRadius(width, height, shapeScale, fixedRadius);
+    }
+
+    function buttonRadius(width, height, sizeHeight, pressed, round) {
+        return Shape.buttonRadius(width, height, sizeHeight, pressed, round, shapeScale, fixedRadius);
+    }
+
+    readonly property real groupedListGap: spacingXXS
+    readonly property real groupedListInnerRadius: cornerRadiusXS
+    readonly property real groupedListOuterRadius: cornerRadiusL
 
     property string fontFamily: {
-        if (typeof SessionData !== "undefined" && SessionData.isGreeterMode && typeof GreetdSettings !== "undefined") {
-            return resolvedFontFamily(GreetdSettings.getEffectiveFontFamily());
-        }
         if (typeof SettingsData === "undefined")
-            return DankCommon.Fonts.sans;
+            return DCommon.Fonts.sans;
         if (Form.mono)
             return resolvedMonoFontFamily(SettingsData.monoFontFamily);
-        return Form.bodyFont !== "" ? Form.bodyFont : resolvedFontFamily(SettingsData.fontFamily);
+        if (Form.bodyFont !== "")
+            return Form.bodyFont;
+        if (SettingsData.isGreeterMode && SettingsData.lockScreenFontFamily !== "")
+            return resolvedFontFamily(SettingsData.lockScreenFontFamily);
+        return resolvedFontFamily(SettingsData.fontFamily);
     }
 
-    property string monoFontFamily: {
-        if (typeof SessionData !== "undefined" && SessionData.isGreeterMode && typeof GreetdSettings !== "undefined") {
-            return resolvedMonoFontFamily(GreetdSettings.monoFontFamily);
+    property string monoFontFamily: typeof SettingsData !== "undefined" ? resolvedMonoFontFamily(SettingsData.monoFontFamily) : DCommon.Fonts.mono
+    property string displayFontFamily: typeof SettingsData !== "undefined" ? resolvedDisplayFontFamily(SettingsData.displayFontFamily) : DCommon.Fonts.display
+
+    readonly property var fontChoices: [
+        {
+            "value": "ui",
+            "text": I18n.tr("Default")
+        },
+        {
+            "value": "display",
+            "text": I18n.tr("Display", "Display font role option")
         }
-        return typeof SettingsData !== "undefined" ? resolvedMonoFontFamily(SettingsData.monoFontFamily) : DankCommon.Fonts.mono;
-    }
+    ].concat(DCommon.Fonts.bundledFamilies.map(family => ({
+                "value": family,
+                "text": family
+            })))
 
     function resolvedFontFamily(family) {
         if (family === defaultFontFamily)
-            return DankCommon.Fonts.sans;
+            return DCommon.Fonts.sans;
         return family;
     }
 
     function resolvedMonoFontFamily(family) {
         if (family === defaultMonoFontFamily)
-            return DankCommon.Fonts.mono;
+            return DCommon.Fonts.mono;
         return family;
     }
 
-    property int fontWeight: {
-        if (typeof SessionData !== "undefined" && SessionData.isGreeterMode && typeof GreetdSettings !== "undefined") {
-            return GreetdSettings.fontWeight;
-        }
-        return typeof SettingsData !== "undefined" ? SettingsData.fontWeight : Font.Normal;
+    function resolvedDisplayFontFamily(family) {
+        if (family === defaultDisplayFontFamily)
+            return DCommon.Fonts.display;
+        return family;
     }
 
-    property real fontScale: {
-        if (typeof SessionData !== "undefined" && SessionData.isGreeterMode && typeof GreetdSettings !== "undefined") {
-            return GreetdSettings.fontScale;
-        }
-        return typeof SettingsData !== "undefined" ? SettingsData.fontScale : 1.0;
+    property int fontWeight: typeof SettingsData !== "undefined" ? SettingsData.fontWeight : Font.Normal
+    readonly property int fontWeightMedium: shiftedFontWeight(Font.Medium)
+    readonly property int fontWeightBold: shiftedFontWeight(Font.Bold)
+
+    function shiftedFontWeight(weight) {
+        return Math.max(Font.Thin, Math.min(Font.Black, weight + fontWeight - Font.Normal));
     }
+
+    property real fontScale: typeof SettingsData !== "undefined" ? SettingsData.fontScale : 1.0
 
     property real spacingXXS: 2
     property real spacingXS: 4
@@ -1195,21 +1257,143 @@ Singleton {
     property real spacingM: 12
     property real spacingL: 16
     property real spacingXL: 24
+    readonly property real windowInset: spacingM
     property real fontSizeSmall: Math.round(fontScale * 12)
     property real fontSizeMedium: Math.round(fontScale * 14)
     property real fontSizeLarge: Math.round(fontScale * 16)
     property real fontSizeXLarge: Math.round(fontScale * 20)
+    property real fontSizeXXLarge: Math.round(fontScale * 28)
+    property real fontSizeDisplay: Math.round(fontScale * 36)
+    property real fontSizeDisplayLarge: Math.round(fontScale * 57)
     property real barHeight: 48
     property real iconSize: 24
     property real iconSizeSmall: 16
     property real iconSizeLarge: 32
+    readonly property real iconSizeMedium: 20
+    readonly property int smallBreakpoint: 480
+    readonly property int mediumBreakpoint: 768
+    readonly property real iconButtonSize: 40
+    readonly property real minimumTouchTargetSize: 48
+    readonly property real listItemHeight: 56
+    readonly property real listItemTwoLineHeight: 72
+    readonly property real avatarSize: 36
+    readonly property real sliderTrackHeight: 16
+    readonly property real sliderHandleWidth: 4
+    readonly property real sliderHandleWidthPressed: 2
+    readonly property real sliderHandleHeight: 28
+    readonly property real sliderHandleGap: 6
+    readonly property real sliderTrackHeightS: 24
+    readonly property real sliderHandleHeightS: 36
+    readonly property real sliderTrackHeightM: 40
+    readonly property real sliderHandleHeightM: 52
+    readonly property real sliderTrackHeightL: 56
+    readonly property real sliderHandleHeightL: 68
+    readonly property real sliderTrackHeightXL: 96
+    readonly property real sliderHandleHeightXL: 108
+    readonly property real switchTrackWidth: 52
+    readonly property real switchTrackHeight: 32
+    readonly property real switchOutlineWidth: 2
+    readonly property real switchThumbUnselected: 16
+    readonly property real switchThumbSelected: 24
+    readonly property real switchThumbPressed: 28
+    readonly property real sliderStopSize: 4
+    readonly property real sliderTickSize: 3
+    readonly property real menuItemHeight: 40
+    readonly property real outlineWidth: 1
+    readonly property real outlineWidthFocused: 2
+    readonly property real dividerWidth: 1
+    readonly property real focusRingWidth: SettingsData.focusRingEnabled ? SettingsData.focusRingWidth : 0
+    readonly property real focusRingOffset: 3
+    readonly property color focusRingColor: {
+        switch (SettingsData.focusRingColor) {
+        case "secondary":
+            return secondary;
+        case "outline":
+            return outline;
+        case "surfaceText":
+            return surfaceText;
+        default:
+            return primary;
+        }
+    }
+    readonly property color lockScreenContentColor: "#ffffff"
+    readonly property real lockScreenScrimAlpha: 0.4
+    readonly property real lockScreenBlur: 0.8
+    readonly property int lockScreenBlurMax: 32
+    readonly property color screenOffColor: "#000000"
+    readonly property real scrimAlpha: 0.55
+    readonly property color scrimColor: currentThemeData.scrim || "#000000"
+    readonly property real buttonHeightXXS: 28
+    readonly property real buttonHeightXS: 32
+    readonly property real buttonHeightS: 40
+    readonly property real buttonHeightM: 56
+    readonly property real buttonMinWidth: 58
+    readonly property real pressScale: 0.98
+    readonly property real iconEnterScale: 0.6
+    readonly property real osdHeight: 60
+    readonly property real osdLevelWidth: 264
+    readonly property real osdLevelVerticalHeight: 352
+    readonly property real osdMediaWidth: 308
+    readonly property real dialogMaxWidth: 560
+    readonly property real bottomSheetHandleWidth: 36
+    readonly property real bottomSheetHandleHeight: 4
+    readonly property real popupEnterScale: 0.92
+    readonly property real fabEnterScale: 0.2
+    readonly property real pendingOpacity: 0.6
+    readonly property real spinnerStrokeWidth: 2
+    readonly property real tabMinWidth: 64
+    readonly property real tabIndicatorHeight: 3
+    readonly property real navigationHeight: 64
+    readonly property real navigationRailWidth: 96
+    readonly property real navigationItemMinWidth: 80
+    readonly property real navigationIndicatorWidth: 56
+    readonly property real navigationIndicatorHeight: 32
+    readonly property real navigationVerticalPadding: 6
+    readonly property real tabIndicatorMinWidth: 24
+    readonly property real tabIndicatorInset: 2
+    readonly property real launcherTileSize: 120
+    readonly property real launcherImageRatio: 0.75
+    readonly property int launcherMaxVisibleRows: 8
+    readonly property real launcherWidthMicro: 500
+    readonly property real launcherWidthDefault: 620
+    readonly property real launcherWidthWide: 720
+    readonly property real launcherWidthLarge: 860
+    readonly property real launcherHeightDefault: 600
+    readonly property real launcherScreenMargin: 100
+
+    readonly property real fieldDefaultWidth: 200
+    readonly property real fieldHeight: Math.round(fontSizeMedium * 3)
+    readonly property real fieldHeightLarge: 48
+    readonly property real outlinedFieldLabelLineHeight: 16
+    readonly property real textFieldSpatialStiffness: 800
+    readonly property real textFieldSpatialDampingRatio: 1
+    readonly property real textFieldFastEffectsStiffness: 3800
+    readonly property real textFieldSlowEffectsStiffness: 800
+    readonly property real textEditHeight: Math.round(fontSizeMedium * 8)
+    readonly property real tooltipMaxWidth: 500
+    readonly property int tooltipDelay: 400
+    readonly property real scrollbarThickness: 6
+    readonly property real scrollbarGap: spacingXS
+    readonly property int scrollbarHideDelay: 1200
+    readonly property real menuMaxHeight: 400
+    readonly property real clockFaceSize: 250
+    readonly property real clockOuterRingRatio: 101 / clockFaceSize
+    readonly property real clockInnerRingRatio: 69 / clockFaceSize
+    readonly property real clockHandWidth: 2
+    readonly property real clockHandleSize: 40
+    readonly property real clockCenterSize: 8
+    readonly property int clockSwitchDelay: 100
+    readonly property real chipIconSize: 18
+    readonly property real buttonGroupExpandRatio: 0.15
+    readonly property real wallpaperBlur: 0.8
+    readonly property int wallpaperBlurMax: 75
+    readonly property color contrastDark: "#000000"
+    readonly property color contrastLight: "#ffffff"
 
     property real panelTransparency: 0.85
     property real popupTransparency: {
         if (typeof SettingsData === "undefined")
             return 1.0;
-        if (isConnectedEffect)
-            return SettingsData.frameOpacity !== undefined ? SettingsData.frameOpacity : 1.0;
         return SettingsData.popupTransparency !== undefined ? SettingsData.popupTransparency : 1.0;
     }
 
@@ -1253,13 +1437,6 @@ Singleton {
 
         if (!isGreeterMode) {
             generateSystemThemesFromCurrentTheme();
-        }
-    }
-
-    function applyGreeterTheme(themeName) {
-        switchTheme(themeName, false, false);
-        if (themeName === dynamic && dynamicColorsFileView.path) {
-            dynamicColorsFileView.reload();
         }
     }
 
@@ -1310,7 +1487,13 @@ Singleton {
 
     function loadCustomTheme(themeData) {
         customThemeRawData = themeData;
-        const colorMode = (typeof SessionData !== "undefined" && SessionData.isLightMode) ? "light" : "dark";
+        customThemeData = resolveCustomTheme(themeData, isLightMode ? "light" : "dark");
+        generateSystemThemesFromCurrentTheme();
+    }
+
+    function resolveCustomTheme(themeData, colorMode) {
+        if (!themeData)
+            return StockThemes.getThemeByName("purple", colorMode === "light");
 
         var baseColors = {};
         if (themeData.dark || themeData.light) {
@@ -1325,8 +1508,7 @@ Singleton {
             if (themeData.variants.type === "multi" && themeData.variants.flavors && themeData.variants.accents) {
                 const defaults = themeData.variants.defaults || {};
                 const modeDefaults = defaults[colorMode] || defaults.dark || {};
-                const isGreeterMode = typeof SessionData !== "undefined" && SessionData.isGreeterMode;
-                const stored = isGreeterMode ? (GreetdSettings.registryThemeVariants[themeId]?.[colorMode] || modeDefaults) : (typeof SettingsData !== "undefined" ? SettingsData.getRegistryThemeMultiVariant(themeId, modeDefaults, colorMode) : modeDefaults);
+                const stored = typeof SettingsData !== "undefined" ? SettingsData.getRegistryThemeMultiVariant(themeId, modeDefaults, colorMode) : modeDefaults;
                 var flavorId = stored.flavor || modeDefaults.flavor || "";
                 const accentId = stored.accent || modeDefaults.accent || "";
                 var flavor = findVariant(themeData.variants.flavors, flavorId);
@@ -1346,26 +1528,20 @@ Singleton {
                     const accentColors = accent[flavor.id] || {};
                     baseColors = mergeColors(baseColors, accentColors);
                 }
-                customThemeData = baseColors;
-                generateSystemThemesFromCurrentTheme();
-                return;
+                return baseColors;
             }
 
             if (themeData.variants.options && themeData.variants.options.length > 0) {
-                const isGreeterMode = typeof SessionData !== "undefined" && SessionData.isGreeterMode;
-                const selectedVariantId = isGreeterMode ? (typeof GreetdSettings.registryThemeVariants[themeId] === "string" ? GreetdSettings.registryThemeVariants[themeId] : themeData.variants.default) : (typeof SettingsData !== "undefined" ? SettingsData.getRegistryThemeVariant(themeId, themeData.variants.default) : themeData.variants.default);
+                const selectedVariantId = typeof SettingsData !== "undefined" ? SettingsData.getRegistryThemeVariant(themeId, themeData.variants.default) : themeData.variants.default;
                 const variant = findVariant(themeData.variants.options, selectedVariantId);
                 if (variant) {
                     const variantColors = variant[colorMode] || variant.dark || variant.light || {};
-                    customThemeData = mergeColors(baseColors, variantColors);
-                    generateSystemThemesFromCurrentTheme();
-                    return;
+                    return mergeColors(baseColors, variantColors);
                 }
             }
         }
 
-        customThemeData = baseColors;
-        generateSystemThemesFromCurrentTheme();
+        return baseColors;
     }
 
     function findVariant(options, variantId) {
@@ -1416,7 +1592,7 @@ Singleton {
     property bool widgetBackgroundHasAlpha: {
         if (Form.active)
             return false;
-        const colorMode = typeof SettingsData !== "undefined" ? SettingsData.widgetBackgroundColor : "sch";
+        const colorMode = typeof SettingsData !== "undefined" ? SettingsData.widgetBackgroundColor : "default";
         return colorMode === "sth" || colorMode === "custom";
     }
 
@@ -1436,8 +1612,10 @@ Singleton {
     property var widgetBaseBackgroundColor: {
         if (Form.active)
             return surface;
-        const colorMode = typeof SettingsData !== "undefined" ? SettingsData.widgetBackgroundColor : "sch";
+        const colorMode = typeof SettingsData !== "undefined" ? SettingsData.widgetBackgroundColor : "default";
         switch (colorMode) {
+        case "default":
+            return cardSurface;
         case "s":
             return surface;
         case "sc":
@@ -1506,14 +1684,15 @@ Singleton {
     function barTextSize(barThickness, fontScale, maximizeText) {
         const scale = barThickness / 48;
         const dankBarScale = fontScale !== undefined ? fontScale : 1.0;
-        const maxScale = (maximizeText ?? false) ? 1.5 : 1.0;
+        const maximized = maximizeText ?? false;
         if (scale <= 0.75)
-            return Math.round(fontSizeSmall * 0.9 * dankBarScale * maxScale);
+            return Math.round((maximized ? fontSizeMedium : fontSizeSmall * 0.9) * dankBarScale);
         if (scale >= 1.25)
-            return Math.round(fontSizeMedium * dankBarScale * maxScale);
-        return Math.round(fontSizeSmall * dankBarScale * maxScale);
+            return Math.round((maximized ? fontSizeXLarge : fontSizeMedium) * dankBarScale);
+        return Math.round((maximized ? fontSizeLarge : fontSizeSmall) * dankBarScale);
     }
 
+    // !TODO: plugin API only (dms-plugins DankKDEConnect); fold into a parametrized BatteryService ladder and drop from Theme
     function getBatteryIcon(level, isCharging, batteryAvailable) {
         if (!batteryAvailable)
             return "battery_std";
@@ -1602,10 +1781,6 @@ Singleton {
             return;
         }
 
-        log.info("Setting desired theme -", kind, "mode:", isLight ? "light" : "dark", stockColors ? "(stock colors)" : "(dynamic)");
-
-        themeGenerationStarting();
-
         const desired = {
             "kind": kind,
             "value": value,
@@ -1615,10 +1790,7 @@ Singleton {
             "runUserTemplates": (typeof SettingsData !== "undefined") ? SettingsData.runUserMatugenTemplates : true
         };
 
-        log.debug("Starting matugen worker");
-        workerRunning = true;
-
-        const args = ["dms", "matugen", "queue", "--state-dir", stateDir, "--shell-dir", shellDir, "--config-dir", configDir, "--kind", desired.kind, "--value", desired.value, "--mode", desired.mode, "--icon-theme", desired.iconTheme, "--matugen-type", desired.matugenType,];
+        const args = [Proc.dmsBin, "matugen", "queue", "--state-dir", stateDir, "--shell-dir", shellDir, "--config-dir", configDir, "--kind", desired.kind, "--value", desired.value, "--mode", desired.mode, "--icon-theme", desired.iconTheme, "--matugen-type", desired.matugenType,];
 
         if (!desired.runUserTemplates) {
             args.push("--run-user-templates=false");
@@ -1632,6 +1804,12 @@ Singleton {
         if (typeof SettingsData !== "undefined" && SettingsData.terminalsAlwaysDark) {
             args.push("--terminals-always-dark");
         }
+        if (typeof SettingsData !== "undefined" && SettingsData.terminalOpacity < 100) {
+            args.push("--terminal-opacity", SettingsData.terminalOpacity.toString());
+        }
+        if (typeof SettingsData !== "undefined" && SettingsData.terminalPalette !== "default") {
+            args.push("--terminal-palette", SettingsData.terminalPalette);
+        }
         if (typeof SettingsData !== "undefined" && SettingsData.matugenContrast !== 0) {
             args.push("--contrast", SettingsData.matugenContrast.toString());
         }
@@ -1639,8 +1817,14 @@ Singleton {
         // binary is a supported setup (DMS_SHELL_DIR / -c), and an older binary
         // exits with "unknown flag: --source-mode" rather than ignoring it, so
         // the default must not put the flag on the command line at all.
-        if (typeof SettingsData !== "undefined" && SettingsData.matugenSourceMode && SettingsData.matugenSourceMode !== "dominant") {
+        const seedColor = (typeof SettingsData !== "undefined" && !stockColors) ? SettingsData.matugenSeedColor : "";
+        if (seedColor) {
+            args.push("--seed-color", seedColor);
+        } else if (typeof SettingsData !== "undefined" && SettingsData.matugenSourceMode && SettingsData.matugenSourceMode !== "dominant") {
             args.push("--source-mode", SettingsData.matugenSourceMode);
+        }
+        if (typeof SettingsData !== "undefined" && !stockColors && SettingsData.matugenSpec !== "2021") {
+            args.push("--spec", SettingsData.matugenSpec);
         }
 
         if (typeof SettingsData !== "undefined") {
@@ -1704,8 +1888,66 @@ Singleton {
             }
         }
 
+        const runKey = Qt.md5(JSON.stringify(args));
+        const skipUnchanged = !_matugenRunKey && !colorsFileLoadFailed && typeof SettingsData !== "undefined" && !SettingsData.generateThemeAtStartup;
+        if (skipUnchanged && runKey === CacheData.matugenAppliedKey) {
+            log.info("Theme inputs unchanged since the last run, skipping startup generation");
+            return;
+        }
+
+        log.info("Setting desired theme -", kind, "mode:", isLight ? "light" : "dark", stockColors ? "(stock colors)" : "(dynamic)");
+        themeGenerationStarting();
+
+        log.debug("Starting matugen worker");
+        workerRunning = true;
+        _matugenRunKey = runKey;
+        _lastGenerateMs = Date.now();
+        _workerStderr = [];
+        _workerStderrUsage = false;
         systemThemeGenerator.command = args;
         systemThemeGenerator.running = true;
+    }
+
+    // an older dms rejecting a newer flag prints cobra usage after the error line, which must stay in view
+    function _recordWorkerStderr(line) {
+        const text = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/^\s*(FATAL|ERROR|WARN|INFO|DEBUG)\s+\S+:\s*/, "").replace(/^Theme generation failed:\s*/, "").trim();
+        if (!text || _workerStderrUsage || /^(Backtrace omitted|Run with RUST_BACKTRACE)/.test(text))
+            return;
+        if (text === "Usage:") {
+            _workerStderrUsage = true;
+            return;
+        }
+        _workerStderr = _workerStderr.concat(text).slice(-_workerStderrKeep);
+    }
+
+    function _shellQuote(arg) {
+        return /^[\w@%+=:,.\/-]+$/.test(arg) ? arg : "'" + arg.replace(/'/g, "'\\''") + "'";
+    }
+
+    function _workerReproduceCommand() {
+        const args = systemThemeGenerator.command.slice();
+        const queueAt = args.indexOf("queue");
+        if (queueAt > 0)
+            args[queueAt] = "generate";
+        return args.map(_shellQuote).join(" ");
+    }
+
+    function _reportWorkerFailure(message) {
+        const details = _workerStderr.concat(themeTroubleshootingUrl).join("\n");
+        if (typeof ToastService !== "undefined")
+            ToastService.showError(message, details, _workerReproduceCommand(), "theme-worker");
+        log.warn(message);
+    }
+
+    function _workerStartFailed() {
+        if (!workerRunning || systemThemeGenerator.running)
+            return;
+        workerRunning = false;
+        pendingThemeRequest = null;
+        if (CacheData.matugenAppliedKey !== "")
+            CacheData.set("matugenAppliedKey", "");
+        _reportWorkerFailure(I18n.tr("Theme worker failed to start", "error toast, the dms binary could not be launched"));
+        root.matugenCompleted((typeof SessionData !== "undefined" && SessionData.isLightMode) ? "light" : "dark", "error");
     }
 
     function generateSystemThemesFromCurrentTheme() {
@@ -1713,7 +1955,6 @@ Singleton {
         if (!matugenAvailable || isGreeterMode)
             return;
 
-        _lastGenerateMs = Date.now();
         _pendingGenerateParams = true;
         _themeGenerateDebounce.restart();
     }
@@ -1727,13 +1968,10 @@ Singleton {
         const iconTheme = (typeof SettingsData !== "undefined" && SettingsData.iconTheme) ? SettingsData.iconTheme : "System Default";
 
         if (currentTheme === dynamic) {
-            if (!rawWallpaperPath) {
-                log.warn("Auto theme has no wallpaper - skipping matugen");
-                return;
-            }
-            const selectedMatugenType = (typeof SettingsData !== "undefined" && SettingsData.matugenScheme) ? SettingsData.matugenScheme : "scheme-tonal-spot";
-            const kind = rawWallpaperPath.startsWith("#") ? "hex" : "image";
-            setDesiredTheme(kind, rawWallpaperPath, isLight, iconTheme, selectedMatugenType, null);
+            const selectedMatugenType = SettingsData.matugenScheme || "scheme-tonal-spot";
+            const source = rawWallpaperPath || SettingsData.matugenSeedColor || materialWallpaperSeed;
+            const kind = source.startsWith("#") ? "hex" : "image";
+            setDesiredTheme(kind, source, isLight, iconTheme, selectedMatugenType, null);
             return;
         }
 
@@ -1822,18 +2060,26 @@ Singleton {
             return theme[key] || fallback;
         }
 
+        function onContainer(theme, container, explicit) {
+            if (explicit)
+                return explicit;
+            if (!container || !theme.surfaceText || !theme.surface)
+                return theme.surfaceText;
+            return Contrast.readableOn(Qt.color(container), [Qt.color(theme.surfaceText), Qt.color(theme.surface), contrastLight, contrastDark]).toString();
+        }
+
         addColor("primary", darkTheme.primary, lightTheme.primary);
         addColor("on_primary", darkTheme.primaryText, lightTheme.primaryText);
         addColor("primary_container", darkTheme.primaryContainer, lightTheme.primaryContainer);
-        addColor("on_primary_container", darkTheme.primaryContainerText || darkTheme.surfaceText, lightTheme.primaryContainerText || lightTheme.surfaceText);
+        addColor("on_primary_container", onContainer(darkTheme, darkTheme.primaryContainer, darkTheme.onPrimaryContainer || darkTheme.primaryContainerText), onContainer(lightTheme, lightTheme.primaryContainer, lightTheme.onPrimaryContainer || lightTheme.primaryContainerText));
         addColor("secondary", darkTheme.secondary, lightTheme.secondary);
         addColor("on_secondary", darkTheme.secondaryText || darkTheme.primaryText, lightTheme.secondaryText || lightTheme.primaryText);
         addColor("secondary_container", darkTheme.secondaryContainer || darkTheme.surfaceContainerHigh, lightTheme.secondaryContainer || lightTheme.surfaceContainerHigh);
-        addColor("on_secondary_container", darkTheme.secondaryContainerText || darkTheme.surfaceText, lightTheme.secondaryContainerText || lightTheme.surfaceText);
+        addColor("on_secondary_container", onContainer(darkTheme, darkTheme.secondaryContainer, darkTheme.onSecondaryContainer || darkTheme.secondaryContainerText), onContainer(lightTheme, lightTheme.secondaryContainer, lightTheme.onSecondaryContainer || lightTheme.secondaryContainerText));
         addColor("tertiary", darkTheme.tertiary || darkTheme.secondary, lightTheme.tertiary || lightTheme.secondary);
         addColor("on_tertiary", darkTheme.tertiaryText || darkTheme.secondaryText || darkTheme.primaryText, lightTheme.tertiaryText || lightTheme.secondaryText || lightTheme.primaryText);
         addColor("tertiary_container", darkTheme.tertiaryContainer || darkTheme.secondaryContainer || darkTheme.surfaceContainerHigh, lightTheme.tertiaryContainer || lightTheme.secondaryContainer || lightTheme.surfaceContainerHigh);
-        addColor("on_tertiary_container", darkTheme.tertiaryContainerText || darkTheme.surfaceText, lightTheme.tertiaryContainerText || lightTheme.surfaceText);
+        addColor("on_tertiary_container", onContainer(darkTheme, darkTheme.tertiaryContainer, darkTheme.onTertiaryContainer || darkTheme.tertiaryContainerText), onContainer(lightTheme, lightTheme.tertiaryContainer, lightTheme.onTertiaryContainer || lightTheme.tertiaryContainerText));
         addColor("error", darkTheme.error || "#F2B8B5", lightTheme.error || "#B3261E");
         addColor("on_error", darkTheme.errorText || "#601410", lightTheme.errorText || "#FFFFFF");
         addColor("error_container", darkTheme.errorContainer || "#8C1D18", lightTheme.errorContainer || "#F9DEDC");
@@ -1881,7 +2127,9 @@ Singleton {
         const theme = isLight ? "adw-gtk3" : "adw-gtk3-dark";
         const schema = "org.gnome.desktop.interface";
         const key = "gtk-theme";
-        const reset = GSettings.setCmd(schema, key, "");
+        // Same-polarity built-in intermediate: "" resolves to light Adwaita and
+        // toolkit-following apps (Chromium without a portal) latch on it.
+        const reset = GSettings.setCmd(schema, key, isLight ? "Adwaita" : "HighContrastInverse");
         const apply = GSettings.setCmd(schema, key, theme);
 
         Proc.runCommand("gtkRefresher", ["sh", "-c", `${reset}; ${apply}`], (output, exitCode) => {
@@ -1909,7 +2157,7 @@ Singleton {
     function applyGtkColors() {
         if (!matugenAvailable) {
             if (typeof ToastService !== "undefined") {
-                ToastService.showError(I18n.tr("matugen not available or disabled - cannot apply %1 colors").arg("GTK"));
+                ToastService.showError(I18n.tr("matugen not available or disabled - cannot apply %1 colors", "error toast, %1 is GTK or Qt").arg("GTK"));
             }
             return;
         }
@@ -1922,7 +2170,7 @@ Singleton {
                 }
             } else {
                 if (typeof ToastService !== "undefined") {
-                    ToastService.showError(I18n.tr("Failed to apply %1 colors").arg("GTK"));
+                    ToastService.showError(I18n.tr("Failed to apply %1 colors", "error toast, %1 is GTK or Qt").arg("GTK"));
                 }
             }
         });
@@ -1968,15 +2216,11 @@ Singleton {
     }
 
     function withAlpha(c, a) {
-        if (!c || c.r === undefined)
-            return Qt.rgba(0, 0, 0, 0);
-        return Qt.rgba(c.r, c.g, c.b, a);
+        return DCommon.Style.withAlpha(c, a);
     }
 
     function blendAlpha(c, a) {
-        if (!c || c.r === undefined)
-            return Qt.rgba(0, 0, 0, 0);
-        return Qt.rgba(c.r, c.g, c.b, c.a * a);
+        return DCommon.Style.blendAlpha(c, a);
     }
 
     function hoverTint(base) {
@@ -2063,6 +2307,12 @@ Singleton {
         return Math.round(value * s) / s;
     }
 
+    // the epsilon keeps a value already on the grid from gaining a pixel through float error
+    function pxCeil(value, dpr) {
+        const s = dpr || 1;
+        return Math.ceil(value * s - 0.001) / s;
+    }
+
     function barWidgetThickness(innerPadding, dpr) {
         return snapEven(Math.max(20, 26 + innerPadding * 0.6), dpr);
     }
@@ -2075,61 +2325,6 @@ Singleton {
         return 1 / (dpr || 1);
     }
 
-    function invertHex(hex) {
-        hex = hex.replace('#', '');
-
-        if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-            return hex;
-        }
-
-        const r = parseInt(hex.substr(0, 2), 16);
-        const g = parseInt(hex.substr(2, 2), 16);
-        const b = parseInt(hex.substr(4, 2), 16);
-
-        const invR = (255 - r).toString(16).padStart(2, '0');
-        const invG = (255 - g).toString(16).padStart(2, '0');
-        const invB = (255 - b).toString(16).padStart(2, '0');
-
-        return `#${invR}${invG}${invB}`;
-    }
-
-    property var baseLogoColor: {
-        if (typeof SettingsData === "undefined")
-            return "";
-        const colorOverride = SettingsData.launcherLogoColorOverride;
-        if (!colorOverride || colorOverride === "")
-            return "";
-        if (colorOverride === "primary")
-            return primary;
-        if (colorOverride === "surface")
-            return surfaceText;
-        return colorOverride;
-    }
-
-    property var effectiveLogoColor: {
-        if (typeof SettingsData === "undefined")
-            return "";
-
-        const colorOverride = SettingsData.launcherLogoColorOverride;
-        if (!colorOverride || colorOverride === "")
-            return "";
-
-        if (colorOverride === "primary")
-            return primary;
-        if (colorOverride === "surface")
-            return surfaceText;
-
-        if (!SettingsData.launcherLogoColorInvertOnMode) {
-            return colorOverride;
-        }
-
-        if (isLightMode) {
-            return invertHex(colorOverride);
-        }
-
-        return colorOverride;
-    }
-
     Process {
         id: systemThemeGenerator
         running: false
@@ -2137,7 +2332,16 @@ Singleton {
             onRead: data => log.info("Theme worker:", data)
         }
         stderr: SplitParser {
-            onRead: data => log.warn("Theme worker:", data)
+            onRead: data => {
+                log.warn("Theme worker:", data);
+                _recordWorkerStderr(data);
+            }
+        }
+
+        // FailedToStart only flips running, it never emits exited
+        onRunningChanged: {
+            if (!running)
+                Qt.callLater(root._workerStartFailed);
         }
 
         onExited: exitCode => {
@@ -2154,12 +2358,13 @@ Singleton {
                 root.matugenCompleted(currentMode, "no-changes");
                 break;
             default:
-                if (typeof ToastService !== "undefined") {
-                    ToastService.showError(I18n.tr("Theme worker failed (%1)").arg(exitCode));
-                }
-                log.warn("Matugen worker failed with exit code:", exitCode);
+                _reportWorkerFailure(I18n.tr("Theme worker failed (%1)", "error toast, %1 is a process exit code").arg(exitCode));
                 root.matugenCompleted(currentMode, "error");
             }
+
+            const appliedKey = (exitCode === 0 || exitCode === 2) ? _matugenRunKey : "";
+            if (CacheData.matugenAppliedKey !== appliedKey)
+                CacheData.set("matugenAppliedKey", appliedKey);
 
             if (!pendingThemeRequest) {
                 if (SettingsData.matugenTemplateGtk)
@@ -2184,7 +2389,7 @@ Singleton {
                 var themeData = JSON.parse(customThemeFileView.text());
                 loadCustomTheme(themeData);
             } catch (e) {
-                ToastService.showError(I18n.tr("Invalid JSON format: %1").arg(e.message));
+                ToastService.showError(I18n.tr("Invalid JSON format: %1", "custom theme file error toast, %1 is the error message").arg(e.message));
             }
         }
 
@@ -2198,7 +2403,7 @@ Singleton {
 
         onLoadFailed: function (error) {
             if (typeof ToastService !== "undefined") {
-                ToastService.showError(I18n.tr("Failed to read theme file: %1").arg(error));
+                ToastService.showError(I18n.tr("Failed to read theme file: %1", "error toast, %1 is the error message").arg(error));
             }
         }
     }
@@ -2250,7 +2455,7 @@ Singleton {
                 log.error("Failed to parse dynamic colors:", e);
                 if (typeof ToastService !== "undefined") {
                     ToastService.wallpaperErrorStatus = "error";
-                    ToastService.showError(I18n.tr("Dynamic colors parse error: %1").arg(e.message));
+                    ToastService.showError(I18n.tr("Dynamic colors parse error: %1", "error toast, %1 is the error message").arg(e.message));
                 }
             }
         }
@@ -2286,7 +2491,7 @@ Singleton {
 
             colorsFileLoadFailed = true;
             const stale = Date.now() - _lastGenerateMs > 5000;
-            if (matugenAvailable && rawWallpaperPath && stale) {
+            if (matugenAvailable && (rawWallpaperPath || materialWallpaperSeed) && stale) {
                 log.debug("Dynamic colors unrecoverable, regenerating");
                 generateSystemThemesFromCurrentTheme();
             }

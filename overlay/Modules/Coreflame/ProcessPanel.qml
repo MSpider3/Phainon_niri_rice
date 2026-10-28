@@ -1,13 +1,17 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import qs.Common
 import qs.Services
+import qs.DCommon.Widgets
 import qs.Widgets
+import qs.Modules.ProcessList
+import "../../Common/Format.js" as Format
 
-// Law: the system monitor, dropping out of the island. Load meters on top, then the busiest
-// processes. Tab switches between sorting by CPU and by memory. Right-click a process for its
-// menu (details, copy, end, force kill); Delete twice ends the selected one from the keyboard.
+// Law: the stock DMS 2.0 system monitor (Processes, Performance, Disks, System, with the same
+// views, search, filters, context menu and keys) in a Coreflame panel dropping out of the island.
+// Keys as stock: 1-4 pick a tab, Ctrl+F searches, Esc closes; the process list keeps its own keys.
 PanelWindow {
     id: mon
 
@@ -15,62 +19,26 @@ PanelWindow {
     property int strip: 40
     property bool shown: false
     property real reveal: shown ? 1 : 0
-    // The selection follows the process, not the row: the list re-sorts on every refresh.
-    property int selectedPid: -1
-    readonly property int selected: processes.findIndex(p => p.pid === selectedPid)
 
-    // The list is empty for a moment after opening, and a selected process can exit:
-    // fall back to the first row then.
-    onProcessesChanged: {
-        if (shown && selected < 0)
-            select(0);
-    }
+    property int currentTab: 0
+    property string searchText: ""
+    property string expandedPid: ""
 
-    function select(index) {
-        const proc = processes[Math.max(0, Math.min(processes.length - 1, index))];
-        if (proc)
-            selectedPid = proc.pid;
-    }
-    property int armed: -1
-    // Right-click menu and details card: the process they are about, and where the menu opens.
-    property var menuFor: null
-    property real menuX: 0
-    property real menuY: 0
-    property var infoFor: null
-
-    readonly property var modules: ["processes", "cpu", "memory", "system"]
-    readonly property var processes: (DgopService.processes ?? []).slice(0, 14)
-    readonly property real panelWidth: 700
-    readonly property real rowHeight: Form.reaver ? 30 : 34
+    readonly property var tabs: ["Processes", "Performance", "Disks", "System"]
+    readonly property real panelWidth: Math.min(860, width - 48)
+    readonly property real fullHeight: Math.min(720, height - 48)
 
     function open() {
         if (NiriService.inOverview)
             NiriService.closeOverview();
         Coreflames.earn("law");
-        select(0);
-        armed = -1;
         shown = true;
-        keys.forceActiveFocus();
+        Qt.callLater(focusContent);
     }
 
     function close() {
         shown = false;
-        armed = -1;
-        menuFor = null;
-        infoFor = null;
-    }
-
-    function send(proc, name) {
-        if (proc)
-            Quickshell.execDetached(["kill", "-" + name, String(proc.pid)]);
-    }
-
-    function copy(text) {
-        Quickshell.execDetached(["dms", "cl", "copy", String(text)]);
-    }
-
-    function memory(kb) {
-        return kb >= 1048576 ? (kb / 1048576).toFixed(1) + " GB" : Math.round(kb / 1024) + " MB";
+        contextMenu.dismiss();
     }
 
     function toggle() {
@@ -84,29 +52,32 @@ PanelWindow {
         return Form.reaver ? String(text).toLowerCase() : text;
     }
 
-    function end(index) {
-        const proc = processes[index];
-        if (!proc)
-            return;
-        if (armed !== proc.pid) {
-            armed = proc.pid;
-            return;
-        }
-        armed = -1;
-        Quickshell.execDetached(["kill", String(proc.pid)]);
+    function focusContent() {
+        if (currentTab === 0 && searchField.visible)
+            searchField.forceActiveFocus();
+        else
+            scope.forceActiveFocus();
     }
 
-    // Destroyed while open (a screen unplugged, another theme picked): release what opening took.
-    Component.onDestruction: {
+    onCurrentTabChanged: {
         if (shown)
-            shown = false;
+            focusContent();
     }
 
     onShownChanged: {
         if (shown)
-            DgopService.addRef(modules);
-        else
-            DgopService.removeRef(modules);
+            return;
+        searchText = "";
+        expandedPid = "";
+        processesLoader.item?.reset();
+    }
+
+    // Header and footer readouts; each tab view holds its own modules while it is showing.
+    // "gpu" as stock: the System tab's per-GPU temperature switch needs it (polls only once switched on).
+    Ref {
+        service: DgopService
+        modules: ["cpu", "memory", "network", "disk", "system", "gpu"]
+        active: mon.shown
     }
 
     screen: targetScreen
@@ -144,15 +115,14 @@ PanelWindow {
     Item {
         id: panel
 
-        readonly property real listTop: mon.strip + 124
-        readonly property real fullHeight: listTop + Math.max(1, mon.processes.length) * mon.rowHeight + 48
-
+        // Grows out of the island: from its width and strip height to the full panel.
         x: Math.round((mon.width - width) / 2)
         width: Math.round(420 + (mon.panelWidth - 420) * mon.reveal)
-        height: Math.round(mon.strip + (fullHeight - mon.strip) * mon.reveal)
+        height: Math.round(mon.strip + (mon.fullHeight - mon.strip) * mon.reveal)
         clip: true
 
         CfTab {
+            id: plate
             anchors.fill: parent
             side: "center"
         }
@@ -173,31 +143,7 @@ PanelWindow {
 
         MouseArea {
             anchors.fill: parent
-        }
-
-        Item {
-            id: keys
-            anchors.fill: parent
-            focus: true
-
-            Keys.onEscapePressed: {
-                if (mon.menuFor)
-                    mon.menuFor = null;
-                else if (mon.infoFor)
-                    mon.infoFor = null;
-                else
-                    mon.close();
-            }
-            Keys.onDownPressed: {
-                mon.select(mon.selected + 1);
-                mon.armed = -1;
-            }
-            Keys.onUpPressed: {
-                mon.select(mon.selected - 1);
-                mon.armed = -1;
-            }
-            Keys.onTabPressed: DgopService.setSortBy(DgopService.currentSort === "cpu" ? "memory" : "cpu")
-            Keys.onDeletePressed: mon.end(mon.selected)
+            onClicked: contextMenu.dismiss()
         }
 
         // Title
@@ -208,10 +154,10 @@ PanelWindow {
 
             CfGlyph {
                 anchors.verticalCenter: parent.verticalCenter
-                name: "law"
-                size: 18
-                strokeWidth: 1.9
-                color: Theme.primary
+                name: Form.reaver ? "mask" : "law"
+                size: Form.reaver ? 15 : 18
+                strokeWidth: Form.reaver ? 1.6 : 1.9
+                color: Form.reaver ? Theme.live : Theme.primary
             }
 
             StyledText {
@@ -224,448 +170,160 @@ PanelWindow {
             }
         }
 
-        // Load
-        Column {
-            x: 22
-            y: mon.strip + 8
-            width: mon.panelWidth - 44
-            spacing: 8
+        FocusScope {
+            id: scope
+
+            x: 18
+            y: mon.strip + 4
+            width: mon.panelWidth - 36
+            // Stays above the Flame Reaver's torn hem.
+            height: mon.fullHeight - y - plate.hem - 8
             opacity: mon.reveal
+            focus: true
 
-            Repeater {
-                model: [
-                    {
-                        "name": "CPU",
-                        "value": (DgopService.cpuUsage || 0) / 100,
-                        "text": Math.round(DgopService.cpuUsage || 0) + "%",
-                        "alarm": (DgopService.cpuUsage || 0) > 90
-                    },
-                    {
-                        "name": "Heat",
-                        "value": (DgopService.cpuTemperature || 0) / 100,
-                        "text": Math.round(DgopService.cpuTemperature || 0) + "°",
-                        "alarm": (DgopService.cpuTemperature || 0) > 85
-                    },
-                    {
-                        "name": "Memory",
-                        "value": (DgopService.memoryUsage || 0) / 100,
-                        "text": Math.round(DgopService.memoryUsage || 0) + "%",
-                        "alarm": (DgopService.memoryUsage || 0) > 90
+            Keys.onPressed: event => {
+                if (contextMenu.visible || contextMenu.confirmationOpen)
+                    return;
+                switch (event.key) {
+                case Qt.Key_1:
+                case Qt.Key_2:
+                case Qt.Key_3:
+                case Qt.Key_4:
+                    if (searchField.getActiveFocus())
+                        return;
+                    mon.currentTab = event.key - Qt.Key_1;
+                    event.accepted = true;
+                    return;
+                case Qt.Key_Escape:
+                    mon.close();
+                    event.accepted = true;
+                    return;
+                case Qt.Key_F:
+                    if (event.modifiers & Qt.ControlModifier) {
+                        mon.currentTab = 0;
+                        searchField.forceActiveFocus();
+                        event.accepted = true;
+                        return;
                     }
-                ]
+                    break;
+                }
+                if (mon.currentTab === 0 && processesLoader.item)
+                    processesLoader.item.handleKey(event);
+            }
 
-                Row {
-                    required property var modelData
-                    width: parent.width
-                    spacing: 10
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: Theme.spacingS
+                visible: DgopService.dgopAvailable
 
-                    StyledText {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 64
-                        text: mon.tx(modelData.name)
-                        font.pixelSize: Theme.fontSizeSmall
-                        font.weight: Font.Medium
-                        color: Theme.withAlpha(Theme.surfaceText, 0.65)
+                ProcessTabs {
+                    Layout.fillWidth: true
+                    // Clear of Khaslana's corner blocks and Phainon's wing.
+                    Layout.leftMargin: 24
+                    Layout.rightMargin: 24
+                    tabs: mon.tabs
+                    current: mon.currentTab
+                    onPicked: index => mon.currentTab = index
+                }
+
+                ProcessSystemHeader {
+                    Layout.fillWidth: true
+                    visible: mon.currentTab === 0
+                }
+
+                ProcessSummary {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: false
+                    visible: mon.currentTab === 0
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingM
+                    visible: mon.currentTab === 0
+
+                    DSearchField {
+                        id: searchField
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Theme.buttonHeightS
+                        placeholderText: mon.tx("Search processes...")
+                        text: mon.searchText
+                        onTextChanged: mon.searchText = text
+                        ignoreUpDownKeys: true
+                        keyForwardTargets: [scope]
                     }
 
-                    CfBlade {
-                        anchors.verticalCenter: parent.verticalCenter
-                        meter: true
-                        width: parent.width - 64 - 50 - 20
-                        value: modelData.value
-                        tone: modelData.alarm ? Theme.error : Theme.primary
-                        tide: modelData.name === "Memory"
-                    }
-
-                    StyledText {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 50
-                        horizontalAlignment: Text.AlignRight
-                        text: modelData.text
-                        font.pixelSize: Theme.fontSizeMedium
-                        font.weight: Font.Bold
-                        color: modelData.alarm ? Theme.error : Theme.surfaceText
+                    ProcessFilterChips {
+                        Layout.preferredWidth: singleRowWidth
                     }
                 }
-            }
-        }
-
-        // Column heads; clicking one sorts by it
-        Item {
-            x: 22
-            y: panel.listTop - 24
-            width: mon.panelWidth - 44
-            height: 20
-            opacity: mon.reveal
-
-            // Over the name column (list x 14 + name x 76, less this row's x 22)
-            StyledText {
-                x: 68
-                text: mon.tx("PROCESS")
-                font.pixelSize: 10
-                font.letterSpacing: 1.3
-                color: Theme.withAlpha(Theme.surfaceText, 0.5)
-            }
-
-            Row {
-                anchors.right: parent.right
-                spacing: 0
-
-                Repeater {
-                    model: ["cpu", "memory"]
-
-                    StyledText {
-                        required property string modelData
-                        width: 80
-                        horizontalAlignment: Text.AlignRight
-                        text: (DgopService.currentSort === modelData ? "▾ " : "") + mon.tx(modelData === "cpu" ? "CPU" : "MEMORY")
-                        font.pixelSize: 10
-                        font.letterSpacing: 1.3
-                        color: DgopService.currentSort === modelData ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.5)
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: DgopService.setSortBy(modelData)
-                        }
-                    }
-                }
-            }
-        }
-
-        Column {
-            x: 14
-            y: panel.listTop
-            width: mon.panelWidth - 28
-            opacity: mon.reveal
-
-            Repeater {
-                model: mon.processes
 
                 Item {
-                    id: row
-                    required property var modelData
-                    required property int index
-                    readonly property bool current: mon.selected === index
-                    readonly property bool armed: mon.armed === modelData.pid
-                    width: parent.width
-                    height: mon.rowHeight
+                    id: views
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
 
-                    CfSurface {
+                    Loader {
+                        id: processesLoader
                         anchors.fill: parent
-                        anchors.margins: 1
-                        visible: row.current
-                        color: row.armed ? Theme.error : Theme.primary
-                        edgeWidth: 0
-                        radius: 14
-                        cut: 6
-                    }
-
-                    Text {
-                        x: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 60
-                        text: row.modelData.pid
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: row.current ? Theme.withAlpha(Theme.primaryText, 0.75) : Theme.withAlpha(Theme.surfaceText, 0.4)
-                    }
-
-                    StyledText {
-                        x: 76
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 76 - 176
-                        elide: Text.ElideRight
-                        wrapMode: Text.NoWrap
-                        maximumLineCount: 1
-                        text: row.armed ? mon.tx("Press Delete again to end " + (row.modelData.command ?? "")) : mon.tx(row.modelData.command ?? "")
-                        font.pixelSize: Theme.fontSizeMedium
-                        font.weight: row.current ? Font.Bold : Font.Medium
-                        color: row.current ? Theme.primaryText : Theme.surfaceText
-                    }
-
-                    Row {
-                        anchors.right: parent.right
-                        anchors.rightMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        Repeater {
-                            model: [(row.modelData.cpu ?? 0).toFixed(1) + "%", (row.modelData.memoryPercent ?? 0).toFixed(1) + "%"]
-
-                            Text {
-                                required property string modelData
-                                width: 80
-                                horizontalAlignment: Text.AlignRight
-                                text: modelData
-                                font.family: Theme.monoFontFamily
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: row.current ? Theme.primaryText : Theme.withAlpha(Theme.surfaceText, 0.8)
-                            }
+                        active: mon.visible
+                        visible: mon.currentTab === 0
+                        sourceComponent: ProcessesView {
+                            active: mon.shown && mon.currentTab === 0
+                            searchText: mon.searchText
+                            expandedPid: mon.expandedPid
+                            contextMenu: contextMenu
+                            onExpandedPidChanged: mon.expandedPid = expandedPid
                         }
                     }
 
-                    MouseArea {
+                    Loader {
                         anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        onPositionChanged: {
-                            if (mon.selected !== row.index) {
-                                mon.selectedPid = row.modelData.pid;
-                                mon.armed = -1;
-                            }
-                        }
-                        onClicked: mouse => {
-                            mon.selectedPid = row.modelData.pid;
-                            mon.armed = -1;
-                            if (mouse.button === Qt.RightButton) {
-                                const at = mapToItem(panel, mouse.x, mouse.y);
-                                mon.menuX = Math.min(at.x, panel.width - 236);
-                                mon.menuY = Math.min(at.y, panel.height - 200);
-                                mon.menuFor = row.modelData;
-                            } else {
-                                mon.menuFor = null;
-                            }
-                            keys.forceActiveFocus();
-                        }
+                        active: mon.visible
+                        visible: mon.currentTab === 1
+                        sourceComponent: PerformanceView {}
+                    }
+
+                    Loader {
+                        anchors.fill: parent
+                        active: mon.visible
+                        visible: mon.currentTab === 2
+                        sourceComponent: DisksView {}
+                    }
+
+                    Loader {
+                        anchors.fill: parent
+                        active: mon.visible
+                        visible: mon.currentTab === 3
+                        sourceComponent: SystemView {}
                     }
                 }
-            }
-        }
 
-        StyledText {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: Form.reaver ? 18 : 14
-            text: mon.tx("↑↓ select   Tab sort   Right-click for the menu   Delete twice ends a process   Esc close")
-            font.pixelSize: Theme.fontSizeSmall
-            color: Theme.withAlpha(Theme.surfaceText, 0.45)
-        }
-
-        // Details card
-        Item {
-            id: info
-            visible: mon.infoFor !== null
-            anchors.centerIn: parent
-            width: 460
-            height: infoColumn.implicitHeight + 28
-
-            MouseArea {
-                anchors.fill: parent
-            }
-
-            CfSurface {
-                anchors.fill: parent
-                color: Theme.surfaceContainerHighest
-                edgeColor: Theme.primary
-                edgeWidth: 1
-                radius: 16
-            }
-
-            Column {
-                id: infoColumn
-                x: 16
-                y: 14
-                width: parent.width - 32
-                spacing: 6
-
+                // Stock footer readouts: network, disk, CPU, memory.
                 StyledText {
-                    width: parent.width
-                    elide: Text.ElideRight
-                    text: mon.tx(mon.infoFor?.command ?? "")
-                    font.family: Form.display(Theme.fontFamily)
-                    font.pixelSize: Theme.fontSizeLarge
-                    font.weight: Font.DemiBold
-                    color: Theme.surfaceText
-                }
-
-                Repeater {
-                    model: mon.infoFor ? [["PID", mon.infoFor.pid], ["Parent PID", mon.infoFor.ppid || "-"], ["User", mon.infoFor.username || "-"], ["CPU", (mon.infoFor.cpu ?? 0).toFixed(1) + "%"], ["Memory", mon.memory(mon.infoFor.memoryKB ?? 0) + "  (" + (mon.infoFor.memoryPercent ?? 0).toFixed(1) + "%)"]] : []
-
-                    Item {
-                        required property var modelData
-                        width: infoColumn.width
-                        height: 20
-
-                        StyledText {
-                            text: mon.tx(modelData[0])
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.withAlpha(Theme.surfaceText, 0.6)
-                        }
-
-                        Text {
-                            anchors.right: parent.right
-                            text: modelData[1]
-                            font.family: Theme.monoFontFamily
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.surfaceText
-                        }
-                    }
-                }
-
-                Text {
-                    width: parent.width
-                    wrapMode: Text.WrapAnywhere
-                    maximumLineCount: 4
-                    elide: Text.ElideRight
-                    text: mon.infoFor?.fullCommand || mon.infoFor?.command || ""
+                    Layout.alignment: Qt.AlignRight
+                    text: "↓" + Format.formatRate(DgopService.networkRxRate) + " ↑" + Format.formatRate(DgopService.networkTxRate) + "   " + mon.tx("disk") + " ↓" + Format.formatRate(DgopService.diskReadRate) + " ↑" + Format.formatRate(DgopService.diskWriteRate) + "   " + mon.tx("CPU") + " " + DgopService.cpuUsage.toFixed(1) + "%   " + DgopService.formatSystemMemory(DgopService.usedMemoryKB) + " / " + DgopService.formatSystemMemory(DgopService.totalMemoryKB)
+                    font.pixelSize: Theme.fontSizeSmall
                     font.family: Theme.monoFontFamily
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.withAlpha(Theme.surfaceText, 0.75)
+                    color: Theme.surfaceVariantText
                 }
+            }
 
-                StyledText {
-                    anchors.right: parent.right
-                    text: mon.tx("Close")
-                    font.pixelSize: Theme.fontSizeSmall
-                    font.weight: Font.Bold
-                    color: Theme.primary
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -6
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: mon.infoFor = null
-                    }
-                }
+            StyledText {
+                anchors.centerIn: parent
+                visible: !DgopService.dgopAvailable
+                text: mon.tx("The system monitor needs the DMS service (dgop), which is not running.")
+                font.pixelSize: Theme.fontSizeMedium
+                color: Theme.error
             }
         }
 
-        // Right-click menu
-        MouseArea {
-            anchors.fill: parent
-            visible: mon.menuFor !== null
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: mon.menuFor = null
-        }
-
-        Item {
-            visible: mon.menuFor !== null
-            x: mon.menuX
-            y: mon.menuY
-            width: 228
-            height: menuColumn.implicitHeight + 12
-
-            CfSurface {
-                anchors.fill: parent
-                color: Theme.surfaceContainerHighest
-                edgeColor: Theme.withAlpha(Theme.outline, 0.9)
-                edgeWidth: 1
-                radius: 12
-                cut: 8
-            }
-
-            Column {
-                id: menuColumn
-                x: 6
-                y: 6
-                width: parent.width - 12
-
-                Repeater {
-                    model: [
-                        {
-                            "id": "info",
-                            "icon": "info",
-                            "label": "View details"
-                        },
-                        {
-                            "id": "pid",
-                            "icon": "content_copy",
-                            "label": "Copy PID"
-                        },
-                        {
-                            "id": "command",
-                            "icon": "terminal",
-                            "label": "Copy command"
-                        },
-                        {
-                            "id": "stop",
-                            "icon": "pause",
-                            "label": "Pause (stop)"
-                        },
-                        {
-                            "id": "cont",
-                            "icon": "play_arrow",
-                            "label": "Resume"
-                        },
-                        {
-                            "id": "term",
-                            "icon": "close",
-                            "label": "End process"
-                        },
-                        {
-                            "id": "kill",
-                            "icon": "dangerous",
-                            "label": "Force kill"
-                        }
-                    ]
-
-                    Item {
-                        id: entry
-                        required property var modelData
-                        readonly property bool danger: modelData.id === "term" || modelData.id === "kill"
-                        width: menuColumn.width
-                        height: 30
-
-                        Rectangle {
-                            anchors.fill: parent
-                            visible: entryMouse.containsMouse
-                            color: Theme.withAlpha(entry.danger ? Theme.error : Theme.primary, 0.22)
-                        }
-
-                        DankIcon {
-                            visible: !Form.reaver
-                            x: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: entry.modelData.icon
-                            size: 16
-                            color: entry.danger ? Theme.error : Theme.primary
-                        }
-
-                        StyledText {
-                            x: Form.reaver ? 10 : 32
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: mon.tx(entry.modelData.label)
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: entry.danger ? Theme.error : Theme.surfaceText
-                        }
-
-                        MouseArea {
-                            id: entryMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                const proc = mon.menuFor;
-                                mon.menuFor = null;
-                                switch (entry.modelData.id) {
-                                case "info":
-                                    mon.infoFor = proc;
-                                    break;
-                                case "pid":
-                                    mon.copy(proc.pid);
-                                    break;
-                                case "command":
-                                    mon.copy(proc.fullCommand || proc.command);
-                                    break;
-                                case "stop":
-                                    mon.send(proc, "STOP");
-                                    break;
-                                case "cont":
-                                    mon.send(proc, "CONT");
-                                    break;
-                                case "term":
-                                    mon.send(proc, "TERM");
-                                    break;
-                                case "kill":
-                                    mon.send(proc, "KILL");
-                                    break;
-                                }
-                                keys.forceActiveFocus();
-                            }
-                        }
-                    }
-                }
-            }
+        ProcessContextMenu {
+            id: contextMenu
+            parentFocusItem: scope
+            // Stock fills it with the user's foreground-layer alpha (0.18 here); over the rows that is unreadable.
+            Component.onCompleted: contentItem.color = Qt.binding(() => Theme.surfaceContainer)
         }
     }
 }

@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import qs.Common
 import qs.Services
 import qs.Widgets
+import qs.DCommon.Widgets as DW
 
 // Trickery: the clipboard history, dropping out of the island like the launcher.
 // Type to filter. Enter copies, Shift+Enter pastes, Delete removes, Ctrl+P pins.
@@ -19,6 +20,12 @@ PanelWindow {
     readonly property int visibleRows: 9
     readonly property real panelWidth: 640
     readonly property real rowHeight: Form.reaver ? 34 : 44
+    readonly property real imageRowHeight: Form.reaver ? 92 : 112
+    // Ids of pictures Qt could not decode: they get a text row and are not fetched again.
+    property var badImages: ({})
+    function showsImage(entry) {
+        return entry.isImage && !badImages[entry.id];
+    }
 
     function open() {
         if (NiriService.inOverview)
@@ -101,9 +108,16 @@ PanelWindow {
     Item {
         id: panel
 
-        readonly property int rows: Math.max(1, Math.min(board.visibleRows, board.entries.length))
+        // Picture rows are taller, so the list is sized by what it holds, up to nine text rows.
+        readonly property real listHeight: {
+            const cap = board.visibleRows * board.rowHeight;
+            let h = 0;
+            for (let i = 0; i < board.entries.length && h < cap; i++)
+                h += board.showsImage(board.entries[i]) ? board.imageRowHeight : board.rowHeight;
+            return Math.max(board.rowHeight, Math.min(cap, h));
+        }
         readonly property real listTop: board.strip + 46
-        readonly property real fullHeight: listTop + rows * board.rowHeight + 50
+        readonly property real fullHeight: listTop + listHeight + 50
 
         x: Math.round((board.width - width) / 2)
         width: Math.round(420 + (board.panelWidth - 420) * board.reveal)
@@ -139,7 +153,7 @@ PanelWindow {
             height: board.strip + 6
             spacing: 10
 
-            DankIcon {
+            DW.DIcon {
                 anchors.verticalCenter: parent.verticalCenter
                 name: "search"
                 size: 20
@@ -215,10 +229,10 @@ PanelWindow {
 
             CfGlyph {
                 anchors.verticalCenter: parent.verticalCenter
-                name: "trickery"
+                name: Form.reaver ? "mask" : "trickery"
                 size: 16
                 strokeWidth: 1.9
-                color: Theme.withAlpha(Theme.surfaceText, 0.6)
+                color: Form.reaver ? Theme.live : Theme.withAlpha(Theme.surfaceText, 0.6)
             }
 
             StyledText {
@@ -243,7 +257,7 @@ PanelWindow {
             x: 14
             y: panel.listTop
             width: board.panelWidth - 28
-            height: panel.rows * board.rowHeight
+            height: panel.listHeight
             opacity: board.reveal
             clip: true
             model: board.entries
@@ -256,7 +270,7 @@ PanelWindow {
                 required property int index
                 readonly property bool current: list.currentIndex === index
                 width: list.width
-                height: board.rowHeight
+                height: board.showsImage(modelData) ? board.imageRowHeight : board.rowHeight
 
                 CfSurface {
                     anchors.fill: parent
@@ -277,7 +291,7 @@ PanelWindow {
                     color: row.current ? Theme.withAlpha(Theme.primaryText, 0.75) : Theme.withAlpha(Theme.surfaceText, 0.4)
                 }
 
-                DankIcon {
+                DW.DIcon {
                     visible: !Form.reaver && !thumb.visible
                     x: 44
                     anchors.verticalCenter: parent.verticalCenter
@@ -286,40 +300,67 @@ PanelWindow {
                     color: row.current ? Theme.primaryText : Theme.primary
                 }
 
-                // Copied pictures show themselves. Fetched a moment after the row appears, so
+                // Copied pictures show themselves, fitted whole: on a paper card (Phainon), in a framed
+                // plate (Khaslana), bare (Flame Reaver). Fetched a moment after the row appears, so
                 // scrolling past does not ask the backend for every image on the way.
-                Image {
-                    id: thumb
-                    property string encoded: ""
+                Item {
+                    id: shot
+                    readonly property real pad: Form.khaslana ? 8 : (Form.phainon ? 6 : 0)
+                    visible: board.showsImage(row.modelData)
                     x: 40
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.round(height * 1.5)
-                    height: board.rowHeight - 8
-                    visible: status === Image.Ready
-                    source: encoded ? "data:image/png;base64," + encoded : ""
-                    sourceSize.width: 96
-                    sourceSize.height: 96
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    cache: false
+                    y: 8
+                    width: Form.reaver ? 132 : 160
+                    height: parent.height - 16
 
-                    Timer {
-                        interval: 180
-                        running: row.modelData.isImage && thumb.encoded === "" && board.shown
-                        onTriggered: {
-                            const wanted = row.modelData.id;
-                            DMSService.sendRequest("clipboard.getEntry", {
-                                "id": wanted
-                            }, response => {
-                                if (row.modelData?.id === wanted && response?.result?.data)
-                                    thumb.encoded = response.result.data;
-                            });
+                    CfSurface {
+                        visible: !Form.reaver && thumb.visible
+                        y: thumb.y + Math.round((thumb.height - thumb.paintedHeight) / 2) - shot.pad
+                        width: thumb.paintedWidth + 2 * shot.pad
+                        height: thumb.paintedHeight + 2 * shot.pad
+                        color: Form.phainon ? Theme.surfaceContainerLowest : Theme.surfaceContainerHigh
+                        edgeColor: Form.khaslana ? Theme.primary : Theme.withAlpha(Theme.outline, Form.edgeOpacity)
+                        radius: 10
+                    }
+
+                    Image {
+                        id: thumb
+                        property string encoded: ""
+                        x: shot.pad
+                        y: shot.pad
+                        width: shot.width - 2 * shot.pad
+                        height: shot.height - 2 * shot.pad
+                        visible: status === Image.Ready
+                        source: encoded ? "data:image/png;base64," + encoded : ""
+                        sourceSize: Qt.size(Math.round(width), Math.round(height))
+                        fillMode: Image.PreserveAspectFit
+                        horizontalAlignment: Image.AlignLeft
+                        asynchronous: true
+                        cache: false
+                        onStatusChanged: {
+                            if (status === Image.Error)
+                                board.badImages = Object.assign({}, board.badImages, {
+                                    [row.modelData.id]: true
+                                });
+                        }
+
+                        Timer {
+                            interval: 180
+                            running: board.showsImage(row.modelData) && thumb.encoded === "" && board.shown
+                            onTriggered: {
+                                const wanted = row.modelData.id;
+                                DMSService.sendRequest("clipboard.getEntry", {
+                                    "id": wanted
+                                }, response => {
+                                    if (row?.modelData?.id === wanted && response?.result?.data)
+                                        thumb.encoded = response.result.data;
+                                });
+                            }
                         }
                     }
                 }
 
                 StyledText {
-                    x: thumb.visible ? 40 + thumb.width + 12 : (Form.reaver ? 46 : 74)
+                    x: thumb.visible ? shot.x + thumb.paintedWidth + 2 * shot.pad + 14 : (Form.reaver ? 46 : 74)
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - x - 16
                     elide: Text.ElideRight

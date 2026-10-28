@@ -6,10 +6,18 @@ set -eu
 : "${COREFLAME_DIR:?COREFLAME_DIR must point at the built shell}"
 
 real_runtime="$XDG_RUNTIME_DIR"
+real_data="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_RUNTIME_DIR="$NEST/run"
 export XDG_CONFIG_HOME="$NEST/config"
 export XDG_STATE_HOME="$NEST/state"
 export XDG_CACHE_HOME="$NEST/cache"
+# Own data dir too, or the sandbox's colour templates (KDE colour schemes, fcitx5) overwrite the
+# real ones. Fonts, icons and app entries are only read, so the real ones are linked in.
+export XDG_DATA_HOME="$NEST/data"
+mkdir -p "$XDG_DATA_HOME"
+for d in fonts icons applications; do
+    [ -e "$real_data/$d" ] && ln -sfn "$real_data/$d" "$XDG_DATA_HOME/$d"
+done
 mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 ln -sf "$real_runtime/pipewire-0" "$XDG_RUNTIME_DIR/pipewire-0"
 # The Wayland socket is linked in under its own name, since the backend only accepts a socket name.

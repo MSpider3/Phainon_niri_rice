@@ -7,6 +7,9 @@ import Quickshell
 import Quickshell.Io
 import qs.Common
 import qs.Services
+import qs.DCommon.Common as DCommon
+import "../Common/OutputModel.js" as OutputModel
+import "../Common/BlurStrength.js" as BlurStrength
 import "CoreflameNiri.js" as CoreflameNiri
 
 Singleton {
@@ -24,6 +27,7 @@ Singleton {
 
     property var outputs: ({})
     property var windows: []
+    property bool titleOnlyWindowsUpdate: false
     property var displayScales: ({})
     property var lastFocusedWindowId: null
 
@@ -37,6 +41,10 @@ Singleton {
 
     property int currentKeyboardLayoutIndex: 0
     property var keyboardLayoutNames: []
+
+    property bool touchpadEnabled: true
+    property bool _touchpadStateInitialized: false
+    signal touchpadToggled
 
     property string configValidationOutput: ""
     property bool hasInitialConnection: false
@@ -90,17 +98,14 @@ Singleton {
 
     Connections {
         target: Theme
+        enabled: CompositorService.isNiri
 
         function onScreenTransitionNeeded() {
-            if (CompositorService.isNiri) {
-                root.doScreenTransition();
-            }
+            root.doScreenTransition();
         }
 
         function onThemeGenerationStarting() {
-            if (CompositorService.isNiri) {
-                root.suppressNextToast();
-            }
+            root.suppressNextToast();
         }
     }
 
@@ -131,6 +136,7 @@ Singleton {
 
     Connections {
         target: SettingsData
+        enabled: CompositorService.isNiri
         function onBarConfigsChanged() {
             const newGaps = Math.max(4, (SettingsData.getPrimaryBarConfig()?.spacing ?? 4));
             if (newGaps === root._lastGapValue)
@@ -143,9 +149,10 @@ Singleton {
     Connections {
         target: CompositorService
         function onIsNiriChanged() {
-            if (CompositorService.isNiri) {
-                generateNiriInputConfig();
-            }
+            if (!CompositorService.isNiri)
+                return;
+            generateNiriInputConfig();
+            generateNiriLayoutConfig();
         }
     }
 
@@ -247,13 +254,14 @@ Singleton {
         }
     }
 
-    DankSocket {
+    DCommon.DSocket {
         id: eventStreamSocket
         path: root.socketPath
         connected: CompositorService.isNiri
 
         onConnectionStateChanged: {
-            if (connected) {
+            root._touchpadStateInitialized = false;
+            if (linkUp) {
                 send('"EventStream"');
                 fetchOutputs();
             }
@@ -271,10 +279,21 @@ Singleton {
         }
     }
 
-    DankSocket {
+    DCommon.DSocket {
         id: requestSocket
         path: root.socketPath
         connected: CompositorService.isNiri
+    }
+
+    Loader {
+        id: outputCycleLoader
+        active: CompositorService.isNiri
+        sourceComponent: NiriOutputCycle {
+            wlrOutputService: WlrOutputService
+            socket: requestSocket
+            isNiri: CompositorService.isNiri
+            currentOutput: root.currentOutput
+        }
     }
 
     function fetchOutputs() {
@@ -297,6 +316,12 @@ Singleton {
                 log.warn("Failed to parse outputs:", e);
             }
         });
+    }
+
+    function cycleSingleOutput() {
+        if (!outputCycleLoader.item)
+            return "OUTPUT_CYCLE_UNSUPPORTED";
+        return outputCycleLoader.item.cycleSingleOutput();
     }
 
     function updateDisplayScales() {
@@ -405,6 +430,9 @@ Singleton {
         case 'KeyboardLayoutSwitched':
             handleKeyboardLayoutSwitched(event.KeyboardLayoutSwitched);
             break;
+        case 'TouchpadToggled':
+            handleTouchpadToggled(event.TouchpadToggled);
+            break;
         case 'WorkspaceUrgencyChanged':
             handleWorkspaceUrgencyChanged(event.WorkspaceUrgencyChanged);
             break;
@@ -424,6 +452,15 @@ Singleton {
             handleCastStopped(event.CastStopped);
             break;
         }
+    }
+
+    function handleTouchpadToggled(data) {
+        // Each subscription starts with a snapshot; only later changes show the OSD.
+        const showOsd = _touchpadStateInitialized && touchpadEnabled !== data.on;
+        touchpadEnabled = data.on;
+        _touchpadStateInitialized = true;
+        if (showOsd)
+            touchpadToggled();
     }
 
     function handleWorkspacesChanged(data) {
@@ -482,6 +519,11 @@ Singleton {
         }
 
         setWorkspaces(updatedWorkspaces);
+
+        if (!data.focused) {
+            updateCurrentOutputWorkspaces();
+            return;
+        }
 
         focusedWorkspaceId = data.id;
         focusedWorkspaceIndex = allWorkspaces.findIndex(w => w.id === data.id);
@@ -573,19 +615,36 @@ Singleton {
         windows = windows.filter(w => w.id !== data.id);
     }
 
+    function differsOnlyInTitle(previous, next) {
+        if (previous.title === next.title)
+            return false;
+        const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+        for (const key of keys) {
+            if (key !== "title" && JSON.stringify(previous[key]) !== JSON.stringify(next[key]))
+                return false;
+        }
+        return true;
+    }
+
     function handleWindowOpenedOrChanged(data) {
         if (!data.window)
             return;
         const window = data.window;
         const existingIndex = windows.findIndex(w => w.id === window.id);
-
-        if (existingIndex >= 0) {
-            const updatedWindows = [...windows];
-            updatedWindows[existingIndex] = window;
-            windows = sortWindowsByLayout(updatedWindows);
-        } else {
+        if (existingIndex < 0) {
             windows = sortWindowsByLayout([...windows, window]);
+            return;
         }
+
+        const updatedWindows = [...windows];
+        updatedWindows[existingIndex] = window;
+        if (!differsOnlyInTitle(windows[existingIndex], window)) {
+            windows = sortWindowsByLayout(updatedWindows);
+            return;
+        }
+        titleOnlyWindowsUpdate = true;
+        windows = updatedWindows;
+        titleOnlyWindowsUpdate = false;
     }
 
     function handleWindowLayoutsChanged(data) {
@@ -795,7 +854,7 @@ Singleton {
         });
     }
 
-    function moveColumnLeft(outputName) {
+    function focusColumnLeft(outputName) {
         if (outputName && outputName !== currentOutput)
             focusMonitor(outputName);
         return send({
@@ -805,7 +864,7 @@ Singleton {
         });
     }
 
-    function moveColumnRight(outputName) {
+    function focusColumnRight(outputName) {
         if (outputName && outputName !== currentOutput)
             focusMonitor(outputName);
         return send({
@@ -1142,6 +1201,17 @@ Singleton {
         }
     }
 
+    // Window animations fall back to a fade under Power Saver. Motion.still is not used here
+    // because it is also true for the whole Reaver form, and the eclipse plays in every form.
+    Connections {
+        target: Motion
+
+        function onSaverChanged() {
+            if (CompositorService.isNiri && Form.active)
+                root.generateNiriLayoutConfig();
+        }
+    }
+
     function setLayoutXray(enabled) {
         layoutXrayEnabled = enabled;
         _layoutXrayLoaded = true;
@@ -1183,6 +1253,19 @@ Singleton {
         configGenerationAction.schedule();
     }
 
+    // niri's own defaults stay untouched until the user moves the shell-wide slider
+    function niriBlurBlock(strength) {
+        if (!(strength > 0))
+            return "";
+        const blur = BlurStrength.niriBlur(strength);
+        return `
+
+blur {
+    passes ${blur.passes}
+    offset ${blur.offset}
+}`;
+    }
+
     function doGenerateNiriLayoutConfig() {
         if (writeConfigProcess.running || _awaitingLayoutReloadRevision > _layoutAppliedRevision)
             return;
@@ -1193,11 +1276,10 @@ Singleton {
         configGenerationPending = false;
         log.debug("Generating layout config...");
 
-        const defaultRadius = typeof SettingsData !== "undefined" ? SettingsData.cornerRadius : 12;
         const defaultGaps = typeof SettingsData !== "undefined" ? Math.max(4, (SettingsData.getPrimaryBarConfig()?.spacing ?? 4)) : 4;
         const defaultBorderSize = 2;
 
-        const cornerRadius = Form.active ? Form.windowRadius(defaultRadius) : ((typeof SettingsData !== "undefined" && SettingsData.niriLayoutRadiusOverride >= 0) ? SettingsData.niriLayoutRadiusOverride : defaultRadius);
+        const cornerRadius = Form.active ? Form.windowRadius(Theme.windowRadius) : Theme.windowRadius;
         const gapsOverride = typeof SettingsData !== "undefined" ? SettingsData.niriLayoutGapsOverride : -1;
         const manageGaps = gapsOverride !== -2;
         const gaps = gapsOverride >= 0 ? gapsOverride : defaultGaps;
@@ -1222,7 +1304,7 @@ layer-rule {${excludeLines}
 }
 
 window-rule {
-    match app-id="^com.danklinux.dms$"
+    match app-id="^(dev.duxlabs.shell|com.danklinux.dms)$"
     background-effect {
         xray false
     }
@@ -1259,7 +1341,7 @@ window-rule {
     clip-to-geometry true
     tiled-state true
     draw-border-with-background false
-}` + xrayRules + (Form.active ? "\n\n" + CoreflameNiri.animations(Form.form) : "");
+}` + niriBlurBlock(typeof SettingsData !== "undefined" ? SettingsData.blurStrength : 0) + xrayRules + (Form.active ? "\n\n" + CoreflameNiri.animations(Motion.saver) : "");
 
         const alttabContent = dmsWarning + `recent-windows {
     highlight {
@@ -1275,7 +1357,7 @@ window-rule {
         writeConfigProcess.configContent = configContent;
         writeConfigProcess.configPath = configPath;
         writeConfigProcess.requestRevision = _layoutRequestRevision;
-        writeConfigProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${configPath}" << 'EOF'\n${configContent}\nEOF`];
+        writeConfigProcess.command = ["sh", "-c", replaceFileCommand(configPath, configContent)];
         _awaitingLayoutReloadRevision = Math.max(_awaitingLayoutReloadRevision, _layoutRequestRevision);
         writeConfigProcess.running = true;
 
@@ -1283,17 +1365,24 @@ window-rule {
             _lastGeneratedAlttabContent = alttabContent;
             writeAlttabProcess.alttabContent = alttabContent;
             writeAlttabProcess.alttabPath = alttabPath;
-            writeAlttabProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${alttabPath}" << 'EOF'\n${alttabContent}\nEOF`];
+            writeAlttabProcess.command = ["sh", "-c", replaceFileCommand(alttabPath, alttabContent)];
             writeAlttabProcess.running = true;
         }
 
-        for (const name of ["outputs", "binds", "cursor", "windowrules", "colors", "alttab", "layout", "input"]) {
-            const path = niriDmsDir + "/" + name + ".kdl";
-            Proc.runCommand("niri-ensure-" + name, ["sh", "-c", `mkdir -p "${niriDmsDir}" && [ ! -f "${path}" ] && touch "${path}" || true`], (output, exitCode) => {
-                if (exitCode !== 0)
-                    log.warn("Failed to ensure " + name + ".kdl, exit code:", exitCode);
-            });
-        }
+        ensureDmsConfigFiles(niriDmsDir);
+    }
+
+    property bool _dmsConfigFilesEnsured: false
+
+    function ensureDmsConfigFiles(niriDmsDir) {
+        if (_dmsConfigFilesEnsured)
+            return;
+        _dmsConfigFilesEnsured = true;
+        const script = `mkdir -p "${niriDmsDir}" && for f in outputs binds cursor windowrules colors alttab layout input; do [ -f "${niriDmsDir}/$f.kdl" ] || touch "${niriDmsDir}/$f.kdl"; done`;
+        Proc.runCommand("niri-ensure-dms-configs", ["sh", "-c", script], (output, exitCode) => {
+            if (exitCode !== 0)
+                log.warn("Failed to ensure dms config files, exit code:", exitCode);
+        });
     }
 
     function generateNiriBlurrule() {
@@ -1305,7 +1394,7 @@ window-rule {
         const sourceBlurrulePath = Paths.strip(Qt.resolvedUrl("niri-wpblur.kdl"));
 
         writeBlurruleProcess.blurrulePath = blurrulePath;
-        writeBlurruleProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && cp --no-preserve=mode "${sourceBlurrulePath}" "${blurrulePath}"`];
+        writeBlurruleProcess.command = ["sh", "-c", `${targetFileCommand(blurrulePath)} && cp --no-preserve=mode "${sourceBlurrulePath}" "$target.$$.tmp" && mv -f "$target.$$.tmp" "$target"`];
         writeBlurruleProcess.running = true;
     }
 
@@ -1367,10 +1456,17 @@ window-rule {
         writeCursorProcess.cursorContent = cursorContent;
         writeCursorProcess.cursorPath = cursorPath;
 
-        const escapedCursorContent = cursorContent.replace(/'/g, "'\\''");
-
-        writeCursorProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && printf '%s' '${escapedCursorContent}' > "${cursorPath}"`];
+        writeCursorProcess.command = ["sh", "-c", replaceFileCommand(cursorPath, cursorContent)];
         writeCursorProcess.running = true;
+    }
+
+    function targetFileCommand(path) {
+        return `mkdir -p "$(dirname "${path}")" && target="$(readlink -f "${path}")"`;
+    }
+
+    function replaceFileCommand(path, content) {
+        const body = content.endsWith("\n") ? content : content + "\n";
+        return `${targetFileCommand(path)} && cat > "$target.$$.tmp" << 'EOF' && mv -f "$target.$$.tmp" "$target"\n${body}EOF`;
     }
 
     function applyOutputConfig(outputName, config, callback) {
@@ -1447,11 +1543,7 @@ window-rule {
     function getOutputIdentifier(output, outputName) {
         if (output.explicitIdentifier)
             return outputName;
-        if (SettingsData.displayNameMode === "model" && output.make && output.model) {
-            const serial = output.serial || "Unknown";
-            return output.make + " " + output.model + " " + serial;
-        }
-        return outputName;
+        return OutputModel.niriIdentifier(output, outputName, SettingsData.displayNameMode);
     }
 
     function outputSettingsFor(output, outputName, niriSettings) {
@@ -1459,20 +1551,6 @@ window-rule {
         if (niriSettings)
             return niriSettings[identifier] || niriSettings[outputName] || {};
         return SessionData.getNiriOutputSettings(identifier);
-    }
-
-    function transformToNiri(transform) {
-        const transformMap = {
-            "Normal": "normal",
-            "90": "90",
-            "180": "180",
-            "270": "270",
-            "Flipped": "flipped",
-            "Flipped90": "flipped-90",
-            "Flipped180": "flipped-180",
-            "Flipped270": "flipped-270"
-        };
-        return transformMap[transform] || "normal";
     }
 
     function buildOutputsConfig(outputsData, niriSettings) {
@@ -1509,7 +1587,7 @@ window-rule {
                 kdlContent += `    scale ${output.logical.scale || 1.0}\n`;
 
                 if (output.logical.transform && output.logical.transform !== "Normal") {
-                    kdlContent += `    transform "${transformToNiri(output.logical.transform)}"\n`;
+                    kdlContent += `    transform "${OutputModel.niriTransform(output.logical.transform)}"\n`;
                 }
 
                 if (output.logical.x !== undefined && output.logical.y !== undefined) {
@@ -1553,7 +1631,7 @@ window-rule {
         const niriDmsDir = configDir + "/niri/dms";
         const outputsPath = niriDmsDir + "/outputs.kdl";
 
-        Proc.runCommand("niri-write-outputs", ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${outputsPath}" << 'EOF'\n${kdlContent}EOF`], (output, exitCode) => {
+        Proc.runCommand("niri-write-outputs", ["sh", "-c", replaceFileCommand(outputsPath, kdlContent)], (output, exitCode) => {
             if (exitCode !== 0) {
                 log.warn("Failed to write outputs config:", output);
                 if (callback)
@@ -1660,6 +1738,7 @@ window-rule {
         const defaultMouseScrollMethod = "default";
         const defaultMouseSpeed = 0.0;
 
+        const defaultTouchpadClickMethod = "default";
         const defaultTouchpadDisableOnExternalMouse = false;
         const defaultTouchpadDisableWhileTyping = true;
         const defaultTouchpadDragLock = false;
@@ -1680,6 +1759,7 @@ window-rule {
         const mouseScrollMethod = typeof SettingsData !== "undefined" ? SettingsData.mouseScrollMethod : defaultMouseScrollMethod;
         const mouseSpeed = typeof SettingsData !== "undefined" ? SettingsData.mouseAccelSpeed : defaultMouseSpeed;
 
+        const touchpadClickMethod = typeof SettingsData !== "undefined" ? SettingsData.touchpadClickMethod : defaultTouchpadClickMethod;
         const touchpadDisableOnExternalMouse = typeof SettingsData !== "undefined" ? SettingsData.touchpadDisableOnExternalMouse : defaultTouchpadDisableOnExternalMouse;
         const touchpadDisableWhileTyping = typeof SettingsData !== "undefined" ? SettingsData.touchpadDisableWhileTyping : defaultTouchpadDisableWhileTyping;
         const touchpadDragLock = typeof SettingsData !== "undefined" ? SettingsData.touchpadDragLock : defaultTouchpadDragLock;
@@ -1710,6 +1790,10 @@ window-rule {
 `;
 
         let inputContent = dmsWarning + "input {\n";
+        // Niri flags take no false, so off can only leave it out
+        if (typeof SettingsData !== "undefined" && SettingsData.focusFollowsMouse === 1) {
+            inputContent += "    focus-follows-mouse max-scroll-amount=\"0%\"\n";
+        }
 
         // Mouse block
         inputContent += "    mouse {\n";
@@ -1742,6 +1826,9 @@ window-rule {
         inputContent += `        accel-speed ${touchpadSpeed.toFixed(1)}\n`;
         if (touchpadProfile !== "default") {
             inputContent += `        accel-profile "${touchpadProfile}"\n`;
+        }
+        if (touchpadClickMethod !== "default") {
+            inputContent += `        click-method "${touchpadClickMethod}"\n`;
         }
         if (touchpadNaturalScroll) {
             inputContent += "        natural-scroll\n";
@@ -1818,7 +1905,7 @@ window-rule {
 
         writeInputProcess.inputContent = inputContent;
         writeInputProcess.inputPath = inputPath;
-        writeInputProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${inputPath}" << 'EOF'\n${inputContent}\nEOF`];
+        writeInputProcess.command = ["sh", "-c", replaceFileCommand(inputPath, inputContent)];
         writeInputProcess.running = true;
     }
 

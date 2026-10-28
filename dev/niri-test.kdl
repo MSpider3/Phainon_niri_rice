@@ -14,3 +14,9 @@ layout {
     }
 }
 spawn-at-startup "sh" "-c" "exec sh \"$COREFLAME_DEV/nested-session.sh\""
+// Same as a normal DMS setup: the wallpaper (and the Coreflame depth layer) stay still in the
+// backdrop while workspaces slide.
+layer-rule {
+    match namespace="^quickshell$"
+    place-within-backdrop true
+}

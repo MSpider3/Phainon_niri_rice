@@ -12,8 +12,8 @@ set -u
 home_cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
 state="$home_cfg/coreflame"
 dropin="$home_cfg/systemd/user/dms.service.d/coreflame.conf"
-settings="$home_cfg/DankMaterialShell/settings.json"
-session="${XDG_STATE_HOME:-$HOME/.local/state}/DankMaterialShell/session.json"
+settings="$home_cfg/dms/settings.json"
+session="${XDG_STATE_HOME:-$HOME/.local/state}/dms/session.json"
 log="$state/fallback.log"
 
 mkdir -p "$state"
@@ -127,7 +127,8 @@ def patch(path, values):
         else:
             data[k] = v
     tmp = path + ".coreflame-tmp"
-    json.dump(data, open(tmp, "w"), indent=2)
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
     os.replace(tmp, path)
 
 patch(settings, b.get("settings"))

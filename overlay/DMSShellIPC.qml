@@ -1,11 +1,11 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import Quickshell.Hyprland
 import Quickshell.Wayland
 import Quickshell.Services.SystemTray
 import Quickshell.Services.UPower
 import qs.Common
+import qs.Modules.DDash
 import qs.Services
 import qs.Modules.Settings.DisplayConfig
 
@@ -13,16 +13,15 @@ Item {
     id: root
     readonly property var log: Log.scoped("DMSShellIPC")
 
-    required property var powerMenuModalLoader
-    required property var processListModalLoader
-    required property var controlCenterLoader
-    required property var dankDashPopoutLoader
-    required property var notepadSlideoutVariants
-    required property var hyprKeybindsModalLoader
+    required property var processListModalLoaderRef
+    required property var controlCenterLoaderRef
+    required property var dankDashPopoutLoaderRef
+    required property var notepadSlideoutVariantsRef
+    required property var hyprKeybindsModalLoaderRef
     required property var dankBarRepeater
     required property var hyprlandOverviewLoader
-    required property var workspaceRenameModalLoader
-    required property var windowRuleModalLoader
+    required property var workspaceRenameModalLoaderRef
+    required property var windowRuleModalLoaderRef
 
     function getPreferredBar(refPropertyName) {
         const focusedScreenName = BarWidgetService.getFocusedScreenName();
@@ -52,23 +51,38 @@ Item {
         for (const screenName in BarWidgetService.frameHostedBars)
             bars.push(...BarWidgetService.frameBarsForScreen(screenName));
 
-        let currentBar = null;
+        const configOrder = SettingsData.barConfigs.map(config => config.id);
+        const screenOrder = Quickshell.screens.map(screen => screen.name);
+        const lastBarId = focusedScreenName ? SettingsData.lastUsedBarByScreen[focusedScreenName] : "";
+        // Same order as BarWidgetService.resolveIpcWidget, so every IPC path picks the same bar.
+        const rank = bar => {
+            const screenName = bar.modelData?.name;
+            const onFocused = !!focusedScreenName && screenName === focusedScreenName;
+            const registration = refPropertyName ? BarWidgetService.registrationForItem(bar[refPropertyName]) : null;
+            const tier = !refPropertyName || BarWidgetService.registrationShown(registration) ? 0 : BarWidgetService.registrationLive(registration) ? 1 : 2;
+            const position = bar.barConfig?.position;
+            return [bar.isIsland ? 1 : 0, onFocused ? 0 : 1, tier, onFocused && bar.barConfig?.id === lastBarId ? 0 : 1, screenOrder.indexOf(screenName), position === SettingsData.Position.Left || position === SettingsData.Position.Right ? 1 : 0, configOrder.indexOf(bar.barConfig?.id)];
+        };
+        const compare = (a, b) => {
+            for (let i = 0; i < a.length; i++) {
+                if (a[i] !== b[i])
+                    return a[i] - b[i];
+            }
+            return 0;
+        };
+
+        let best = null;
+        let bestRank = null;
         for (const bar of bars) {
-            if (!bar)
+            if (!bar || (refPropertyName && !bar[refPropertyName]))
                 continue;
-
-            const onFocusedScreen = focusedScreenName && bar.modelData?.name === focusedScreenName;
-            const hasRef = !refPropertyName || !!bar[refPropertyName];
-
-            if (hasRef) {
-                currentBar = bar;
-
-                if (onFocusedScreen)
-                    break;
+            const barRank = rank(bar);
+            if (!best || compare(barRank, bestRank) < 0) {
+                best = bar;
+                bestRank = barRank;
             }
         }
-
-        return currentBar;
+        return best;
     }
 
     readonly property var defaultAppMimeTypes: ({
@@ -89,10 +103,7 @@ Item {
             return false;
         }
 
-        let entry = DesktopEntries.heuristicLookup(desktopId);
-        if (!entry && desktopId.endsWith(".desktop")) {
-            entry = DesktopEntries.heuristicLookup(desktopId.slice(0, -8));
-        }
+        const entry = SessionService.resolveDesktopId(desktopId);
         if (!entry) {
             log.warn("Default app desktop entry not found:", desktopId, "for:", appName);
             return false;
@@ -116,6 +127,28 @@ Item {
         });
 
         return `DEFAULTAPP_LAUNCH_REQUESTED: ${appName}`;
+    }
+
+    function parseIdleInhibitMinutes(duration) {
+        if (duration === undefined || duration === null)
+            return -1;
+        const trimmed = String(duration).trim();
+        if (!trimmed)
+            return -1;
+        const minutes = parseInt(trimmed, 10);
+        if (isNaN(minutes) || minutes <= 0 || String(minutes) !== trimmed)
+            return -1;
+        return minutes;
+    }
+
+    function idleInhibitStatusMessage() {
+        if (!SessionService.idleInhibited)
+            return "Idle inhibit is disabled";
+        if (SessionData.idleInhibitedUntil <= 0)
+            return "Idle inhibit is enabled indefinitely";
+        const remainingMs = Math.max(0, SessionData.idleInhibitedUntil - Date.now());
+        const remainingMin = Math.ceil(remainingMs / 60000);
+        return `Idle inhibit is enabled for ${remainingMin} more minute${remainingMin === 1 ? "" : "s"}`;
     }
 
     IpcHandler {
@@ -164,19 +197,14 @@ Item {
                 root.getPreferredBar().triggerPowerMenu("open");
                 return "POWERMENU_OPEN_SUCCESS";
             }
-            root.powerMenuModalLoader.active = true;
-            if (root.powerMenuModalLoader.item)
-                root.powerMenuModalLoader.item.openCentered();
-
+            PopoutService.openPowerMenu();
             return "POWERMENU_OPEN_SUCCESS";
         }
 
         function close() {
             for (const c of Form.chromes)
                 c.triggerPowerMenu("close");
-            if (root.powerMenuModalLoader.item)
-                root.powerMenuModalLoader.item.close();
-
+            PopoutService.closePowerMenu();
             return "POWERMENU_CLOSE_SUCCESS";
         }
 
@@ -186,15 +214,7 @@ Item {
                 root.getPreferredBar().triggerPowerMenu();
                 return "POWERMENU_TOGGLE_SUCCESS";
             }
-            root.powerMenuModalLoader.active = true;
-            if (root.powerMenuModalLoader.item) {
-                if (root.powerMenuModalLoader.item.shouldBeVisible) {
-                    root.powerMenuModalLoader.item.close();
-                } else {
-                    root.powerMenuModalLoader.item.openCentered();
-                }
-            }
-
+            PopoutService.togglePowerMenu();
             return "POWERMENU_TOGGLE_SUCCESS";
         }
 
@@ -207,10 +227,10 @@ Item {
                 root.getPreferredBar().triggerProcesses("open");
                 return "PROCESSLIST_OPEN_SUCCESS";
             }
-            root.processListModalLoader.active = true;
+            root.processListModalLoaderRef.active = true;
             Qt.callLater(() => {
-                if (root.processListModalLoader.item)
-                    root.processListModalLoader.item.show();
+                if (root.processListModalLoaderRef.item)
+                    root.processListModalLoaderRef.item.show();
             });
 
             return "PROCESSLIST_OPEN_SUCCESS";
@@ -221,8 +241,8 @@ Item {
                 root.getPreferredBar().triggerProcesses("close");
                 return "PROCESSLIST_CLOSE_SUCCESS";
             }
-            if (root.processListModalLoader.item)
-                root.processListModalLoader.item.hide();
+            if (root.processListModalLoaderRef.item)
+                root.processListModalLoaderRef.item.hide();
 
             return "PROCESSLIST_CLOSE_SUCCESS";
         }
@@ -232,10 +252,10 @@ Item {
                 root.getPreferredBar().triggerProcesses("toggle");
                 return "PROCESSLIST_TOGGLE_SUCCESS";
             }
-            root.processListModalLoader.active = true;
+            root.processListModalLoaderRef.active = true;
             Qt.callLater(() => {
-                if (root.processListModalLoader.item)
-                    root.processListModalLoader.item.toggle();
+                if (root.processListModalLoaderRef.item)
+                    root.processListModalLoaderRef.item.toggle();
             });
 
             return "PROCESSLIST_TOGGLE_SUCCESS";
@@ -246,10 +266,10 @@ Item {
                 root.getPreferredBar().triggerProcesses("toggle");
                 return "PROCESSLIST_FOCUS_OR_TOGGLE_SUCCESS";
             }
-            root.processListModalLoader.active = true;
+            root.processListModalLoaderRef.active = true;
             Qt.callLater(() => {
-                if (root.processListModalLoader.item)
-                    root.processListModalLoader.item.focusOrToggle();
+                if (root.processListModalLoaderRef.item)
+                    root.processListModalLoaderRef.item.focusOrToggle();
             });
 
             return "PROCESSLIST_FOCUS_OR_TOGGLE_SUCCESS";
@@ -260,6 +280,10 @@ Item {
 
     IpcHandler {
         function open(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerControlCenter("open");
+                return "CONTROL_CENTER_OPEN_SUCCESS";
+            }
             if (PopoutService.routeToIsland("controlcenter", null, false, ""))
                 return "CONTROL_CENTER_OPEN_SUCCESS";
             const bar = root.getPreferredBar("controlCenterButtonRef");
@@ -270,24 +294,63 @@ Item {
             return "CONTROL_CENTER_OPEN_FAILED";
         }
 
+        function openWith(section: string): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerControlCenter("open", section);
+                return "CONTROL_CENTER_OPEN_SUCCESS";
+            }
+            if (PopoutService.routeToIsland("controlcenter", null, false, section))
+                return "CONTROL_CENTER_OPEN_SUCCESS";
+            const popout = root.controlCenterLoaderRef.item;
+            if (popout?.shouldBeVisible) {
+                popout.expandedSection = section;
+                return "CONTROL_CENTER_OPEN_SUCCESS";
+            }
+            const bar = root.getPreferredBar("controlCenterButtonRef");
+            if (!bar)
+                return "CONTROL_CENTER_OPEN_FAILED";
+            bar.triggerControlCenter();
+            const opened = root.controlCenterLoaderRef.item;
+            if (!opened)
+                return "CONTROL_CENTER_OPEN_SUCCESS";
+            if (opened.shouldBeVisible)
+                opened.expandedSection = section;
+            else
+                opened.pendingSection = section;
+            return "CONTROL_CENTER_OPEN_SUCCESS";
+        }
+
+        function back(): string {
+            if (Form.chrome && Form.chromes.length > 0)
+                return Form.chromes.some(c => c.triggerControlCenter("back")) ? "CONTROL_CENTER_BACK_SUCCESS" : "CONTROL_CENTER_BACK_FAILED";
+            const content = root.controlCenterLoaderRef.item?.contentLoader?.item;
+            if (!content)
+                return "CONTROL_CENTER_BACK_FAILED";
+            content.goBack();
+            return "CONTROL_CENTER_BACK_SUCCESS";
+        }
+
+        // The island and the popout can both show the control center, so close and status cover both.
         function hide(): string {
             if (Form.chrome && Form.chromes.length > 0) {
                 for (const c of Form.chromes)
                     c.triggerControlCenter("close");
                 return "CONTROL_CENTER_HIDE_SUCCESS";
             }
-            if (PopoutService.closeIslandActivity("controlcenter"))
-                return "CONTROL_CENTER_HIDE_SUCCESS";
-            if (root.controlCenterLoader.item && root.controlCenterLoader.item.shouldBeVisible) {
-                root.controlCenterLoader.item.close();
-                return "CONTROL_CENTER_HIDE_SUCCESS";
-            }
-            return "CONTROL_CENTER_HIDE_FAILED";
+            const islandClosed = PopoutService.closeIslandActivity("controlcenter");
+            const popoutOpen = root.controlCenterLoaderRef.item?.shouldBeVisible ?? false;
+            if (popoutOpen)
+                root.controlCenterLoaderRef.item.close();
+            return islandClosed || popoutOpen ? "CONTROL_CENTER_HIDE_SUCCESS" : "CONTROL_CENTER_HIDE_FAILED";
         }
 
         function toggle(): string {
-            if (root.controlCenterLoader.item?.shouldBeVisible) {
-                root.controlCenterLoader.item.close();
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerControlCenter();
+                return "CONTROL_CENTER_TOGGLE_SUCCESS";
+            }
+            if (root.controlCenterLoaderRef.item?.shouldBeVisible) {
+                root.controlCenterLoaderRef.item.close();
                 return "CONTROL_CENTER_TOGGLE_SUCCESS";
             }
             if (PopoutService.routeToIsland("controlcenter", null, true, ""))
@@ -302,9 +365,8 @@ Item {
         }
 
         function status(): string {
-            if (PopoutService.islandControlCenterOpen)
-                return "visible";
-            return (root.controlCenterLoader.item && root.controlCenterLoader.item.shouldBeVisible) ? "visible" : "hidden";
+            const popoutOpen = root.controlCenterLoaderRef.item?.shouldBeVisible ?? false;
+            return popoutOpen || PopoutService.islandControlCenterOpen ? "visible" : "hidden";
         }
 
         target: "control-center"
@@ -322,106 +384,108 @@ Item {
             return "SCREENSHOT_MODE_OFF";
         }
 
+        function getSurfaces(): string {
+            return JSON.stringify(PopoutManager.getActiveSurfaces());
+        }
+
         target: "screenshot"
     }
 
+    function dashIslandActivity(tabId) {
+        switch (tabId) {
+        case "overview":
+            return "home";
+        case "media":
+        case "wallpaper":
+        case "weather":
+            return tabId;
+        default:
+            return "";
+        }
+    }
+
+    function routeDashToIsland(tabId, toggle) {
+        const activity = dashIslandActivity(tabId);
+        if (activity === "")
+            return false;
+        return PopoutService.routeToIsland(activity, null, toggle);
+    }
+
+    function resolveDashPosition(position) {
+        switch ((position || "").toLowerCase()) {
+        case "left":
+            return "left";
+        case "center":
+            return "center";
+        case "right":
+            return "right";
+        default:
+            return "";
+        }
+    }
+
+    function dashBar(position) {
+        if (position)
+            return root.getPreferredBar();
+        return root.getPreferredBar("clockButtonRef") || root.getPreferredBar();
+    }
+
+    // Views only the Coreflame dashboard has; stock DashRegistry would turn them into the overview.
+    readonly property var coreflameDashViews: ["music", "weather", "wallpaper", "notifications", "wellbeing", "network", "time", "clock"]
+
+    function openDash(tab, position) {
+        if (Form.chrome && Form.chromes.length > 0)
+            return root.getPreferredBar().triggerDashTab(coreflameDashViews.includes(tab) ? tab : DashRegistry.resolveId(tab), position, "open");
+        const tabId = DashRegistry.resolveId(tab);
+        if (!position && routeDashToIsland(tabId, false))
+            return true;
+
+        const bar = dashBar(position);
+        if (!bar)
+            return false;
+
+        const dash = root.dankDashPopoutLoaderRef.item;
+        if (dash && dash.shouldBeVisible && dash.triggerScreen?.name === bar.screen?.name) {
+            if (position && bar.positionDash)
+                bar.positionDash(dash, position);
+            dash.requestTab(tabId);
+            if (dash.updateSurfacePosition)
+                dash.updateSurfacePosition();
+            return true;
+        }
+
+        return bar.triggerDashTab(tabId, position);
+    }
+
+    function toggleDash(tab, position) {
+        if (Form.chrome && Form.chromes.length > 0)
+            return root.getPreferredBar().triggerDashTab(coreflameDashViews.includes(tab) ? tab : DashRegistry.resolveId(tab), position);
+        if (root.dankDashPopoutLoaderRef.item?.dashVisible) {
+            root.dankDashPopoutLoaderRef.item.dashVisible = false;
+            return true;
+        }
+
+        const tabId = DashRegistry.resolveId(tab);
+        if (!position && routeDashToIsland(tabId, true))
+            return true;
+
+        const bar = dashBar(position);
+        if (!bar)
+            return false;
+        return bar.triggerDashTab(tabId, position);
+    }
+
     IpcHandler {
-        function _resolveTabId(tab) {
-            switch ((tab || "").toLowerCase()) {
-            case "media":
-                return "media";
-            case "wallpaper":
-                return "wallpaper";
-            case "weather":
-                return "weather";
-            default:
-                return "overview";
-            }
-        }
-
-        function _resolvePosition(position) {
-            switch ((position || "").toLowerCase()) {
-            case "left":
-                return "left";
-            case "center":
-                return "center";
-            case "right":
-                return "right";
-            default:
-                return "";
-            }
-        }
-
-        function _dashBar(position) {
-            if (position)
-                return root.getPreferredBar();
-            return root.getPreferredBar("clockButtonRef") || root.getPreferredBar();
-        }
-
-        function _openDash(tab, position) {
-            const tabId = _resolveTabId(tab);
-            if (!position) {
-                if (tabId === "overview" && PopoutService.routeToIsland("home", null, false))
-                    return true;
-                if (tabId === "media" && PopoutService.routeToIsland("media", null, false))
-                    return true;
-                if (tabId === "wallpaper" && PopoutService.routeToIsland("wallpaper", null, false))
-                    return true;
-                if (tabId === "weather" && PopoutService.routeToIsland("weather", null, false))
-                    return true;
-            }
-
-            const bar = _dashBar(position);
-            if (!bar)
-                return false;
-
-            const dash = root.dankDashPopoutLoader.item;
-            if (dash && dash.shouldBeVisible && dash.triggerScreen?.name === bar.screen?.name) {
-                if (position && bar.positionDash)
-                    bar.positionDash(dash, position);
-                dash.requestTab(tabId);
-                if (dash.updateSurfacePosition)
-                    dash.updateSurfacePosition();
-                return true;
-            }
-
-            return bar.triggerDashTab(tabId, position, "open");
-        }
-
-        function _toggleDash(tab, position) {
-            if (root.dankDashPopoutLoader.item?.dashVisible) {
-                root.dankDashPopoutLoader.item.dashVisible = false;
-                return true;
-            }
-
-            const tabId = _resolveTabId(tab);
-            if (!position) {
-                if (tabId === "overview" && PopoutService.routeToIsland("home", null, true))
-                    return true;
-                if (tabId === "media" && PopoutService.routeToIsland("media", null, true))
-                    return true;
-                if (tabId === "wallpaper" && PopoutService.routeToIsland("wallpaper", null, true))
-                    return true;
-                if (tabId === "weather" && PopoutService.routeToIsland("weather", null, true))
-                    return true;
-            }
-
-            const bar = _dashBar(position);
-            if (!bar)
-                return false;
-            return bar.triggerDashTab(tabId, position);
-        }
-
         function resolveTabIndex(tab: string): int {
-            return SettingsData.dashTabIndexForId(_resolveTabId(tab));
+            return Math.max(0, DashRegistry.indexOf(DashRegistry.resolveId(tab)));
         }
 
         function open(tab: string): string {
-            return _openDash(tab, "") ? "DASH_OPEN_SUCCESS" : "DASH_OPEN_FAILED";
+            return root.openDash(tab, "") ? "DASH_OPEN_SUCCESS" : "DASH_OPEN_FAILED";
         }
 
         function openAt(tab: string, position: string): string {
-            return _openDash(tab, _resolvePosition(position)) ? "DASH_OPEN_SUCCESS" : "DASH_OPEN_FAILED";
+            return root.openDash(tab, root.resolveDashPosition(position)) ? "DASH_OPEN_SUCCESS" : "DASH_OPEN_FAILED";
         }
 
         function close(): string {
@@ -430,21 +494,18 @@ Item {
                     c.triggerDashTab("overview", "", "close");
                 return "DASH_CLOSE_SUCCESS";
             }
-            if (PopoutService.closeIslandActivity("home") || PopoutService.closeIslandActivity("media") || PopoutService.closeIslandActivity("wallpaper") || PopoutService.closeIslandActivity("weather"))
-                return "DASH_CLOSE_SUCCESS";
-            if (root.dankDashPopoutLoader.item) {
-                root.dankDashPopoutLoader.item.dashVisible = false;
-                return "DASH_CLOSE_SUCCESS";
-            }
-            return "DASH_CLOSE_FAILED";
+            const islandClosed = SettingsData.islandDashActivities.filter(activity => PopoutService.closeIslandActivity(activity)).length > 0;
+            if (root.dankDashPopoutLoaderRef.item)
+                root.dankDashPopoutLoaderRef.item.dashVisible = false;
+            return islandClosed || root.dankDashPopoutLoaderRef.item ? "DASH_CLOSE_SUCCESS" : "DASH_CLOSE_FAILED";
         }
 
         function toggle(tab: string): string {
-            return _toggleDash(tab, "") ? "DASH_TOGGLE_SUCCESS" : "DASH_TOGGLE_FAILED";
+            return root.toggleDash(tab, "") ? "DASH_TOGGLE_SUCCESS" : "DASH_TOGGLE_FAILED";
         }
 
         function toggleAt(tab: string, position: string): string {
-            return _toggleDash(tab, _resolvePosition(position)) ? "DASH_TOGGLE_SUCCESS" : "DASH_TOGGLE_FAILED";
+            return root.toggleDash(tab, root.resolveDashPosition(position)) ? "DASH_TOGGLE_SUCCESS" : "DASH_TOGGLE_FAILED";
         }
 
         target: "dash"
@@ -452,52 +513,43 @@ Item {
 
     IpcHandler {
         function getFocusedScreenName() {
-            if (CompositorService.isHyprland && Hyprland.focusedMonitor) {
-                return Hyprland.focusedMonitor.name;
-            }
-            if (CompositorService.isNiri && NiriService.currentOutput) {
-                return NiriService.currentOutput;
-            }
-            if ((CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) && I3.workspaces?.values) {
-                const focusedWs = I3.workspaces.values.find(ws => ws.focused === true);
-                return focusedWs?.monitor?.name || "";
-            }
-            if (CompositorService.isMango && MangoService.activeOutput) {
-                return MangoService.activeOutput;
-            }
-            return "";
+            return CompositorService.getFocusedScreenName();
         }
 
         function getActiveNotepadInstance() {
-            if (root.notepadSlideoutVariants.instances.length === 0) {
+            if (root.notepadSlideoutVariantsRef.instances.length === 0) {
                 return null;
             }
 
-            if (root.notepadSlideoutVariants.instances.length === 1) {
-                return root.notepadSlideoutVariants.instances[0];
+            if (root.notepadSlideoutVariantsRef.instances.length === 1) {
+                return root.notepadSlideoutVariantsRef.instances[0];
             }
 
             var focusedScreen = getFocusedScreenName();
-            if (focusedScreen && root.notepadSlideoutVariants.instances.length > 0) {
-                for (var i = 0; i < root.notepadSlideoutVariants.instances.length; i++) {
-                    var slideout = root.notepadSlideoutVariants.instances[i];
+            if (focusedScreen && root.notepadSlideoutVariantsRef.instances.length > 0) {
+                for (var i = 0; i < root.notepadSlideoutVariantsRef.instances.length; i++) {
+                    var slideout = root.notepadSlideoutVariantsRef.instances[i];
                     if (slideout.modelData && slideout.modelData.name === focusedScreen) {
                         return slideout;
                     }
                 }
             }
 
-            for (var i = 0; i < root.notepadSlideoutVariants.instances.length; i++) {
-                var slideout = root.notepadSlideoutVariants.instances[i];
+            for (var i = 0; i < root.notepadSlideoutVariantsRef.instances.length; i++) {
+                var slideout = root.notepadSlideoutVariantsRef.instances[i];
                 if (slideout.isVisible) {
                     return slideout;
                 }
             }
 
-            return root.notepadSlideoutVariants.instances[0];
+            return root.notepadSlideoutVariantsRef.instances[0];
         }
 
         function open(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerNotepad("open");
+                return "NOTEPAD_OPEN_SUCCESS";
+            }
             if (PopoutService.notepadResolvedMode === "popout") {
                 PopoutService.openNotepadPopout();
                 return "NOTEPAD_OPEN_SUCCESS";
@@ -513,6 +565,10 @@ Item {
         function openFile(path: string): string {
             if (!path)
                 return open();
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerNotepad("open", path);
+                return "NOTEPAD_OPEN_FILE_SUCCESS";
+            }
             if (PopoutService.notepadResolvedMode === "popout") {
                 PopoutService.openNotepadPopoutWithFile(path);
                 return "NOTEPAD_OPEN_FILE_SUCCESS";
@@ -527,6 +583,11 @@ Item {
         }
 
         function close(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                for (const c of Form.chromes)
+                    c.triggerNotepad("close");
+                return "NOTEPAD_CLOSE_SUCCESS";
+            }
             if (PopoutService.notepadResolvedMode === "popout") {
                 PopoutService.notepadPopout?.hide();
                 return "NOTEPAD_CLOSE_SUCCESS";
@@ -540,6 +601,10 @@ Item {
         }
 
         function toggle(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerNotepad("toggle");
+                return "NOTEPAD_TOGGLE_SUCCESS";
+            }
             if (PopoutService.notepadResolvedMode === "popout") {
                 PopoutService.toggleNotepadPopout();
                 return "NOTEPAD_TOGGLE_SUCCESS";
@@ -553,6 +618,11 @@ Item {
         }
 
         function expand(): string {
+            // The island notepad has one size, so this just opens it.
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerNotepad("open");
+                return "NOTEPAD_EXPAND_SUCCESS";
+            }
             var instance = getActiveNotepadInstance();
             if (instance) {
                 instance.expandedWidth = true;
@@ -564,6 +634,11 @@ Item {
         }
 
         function collapse(): string {
+            // The island notepad has one size, so this just opens it.
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerNotepad("open");
+                return "NOTEPAD_COLLAPSE_SUCCESS";
+            }
             var instance = getActiveNotepadInstance();
             if (instance) {
                 instance.expandedWidth = false;
@@ -589,21 +664,29 @@ Item {
     IpcHandler {
         function toggle(): string {
             SessionService.toggleIdleInhibit();
-            return SessionService.idleInhibited ? "Idle inhibit enabled" : "Idle inhibit disabled";
+            return root.idleInhibitStatusMessage();
         }
 
         function enable(): string {
             SessionService.enableIdleInhibit();
-            return "Idle inhibit enabled";
+            return root.idleInhibitStatusMessage();
+        }
+
+        function enableFor(minutes: string): string {
+            const parsed = root.parseIdleInhibitMinutes(minutes);
+            if (parsed < 0)
+                return "Invalid duration. Use minutes, e.g. 60.";
+            SessionService.enableIdleInhibit(parsed);
+            return root.idleInhibitStatusMessage();
         }
 
         function disable(): string {
             SessionService.disableIdleInhibit();
-            return "Idle inhibit disabled";
+            return "Idle inhibit is disabled";
         }
 
         function status(): string {
-            return SessionService.idleInhibited ? "Idle inhibit is enabled" : "Idle inhibit is disabled";
+            return root.idleInhibitStatusMessage();
         }
 
         function reason(newReason: string): string {
@@ -624,21 +707,15 @@ Item {
         }
 
         function play(): void {
-            if (MprisController.activePlayer && MprisController.activePlayer.canPlay) {
-                MprisController.activePlayer.play();
-            }
+            MprisController.play();
         }
 
         function pause(): void {
-            if (MprisController.activePlayer && MprisController.activePlayer.canPause) {
-                MprisController.activePlayer.pause();
-            }
+            MprisController.pause();
         }
 
         function playPause(): void {
-            if (MprisController.activePlayer && MprisController.activePlayer.canTogglePlaying) {
-                MprisController.activePlayer.togglePlaying();
-            }
+            MprisController.playPause();
         }
 
         function previous(): void {
@@ -650,9 +727,7 @@ Item {
         }
 
         function stop(): void {
-            if (MprisController.activePlayer) {
-                MprisController.activePlayer.stop();
-            }
+            MprisController.stop();
         }
 
         function increment(step: string): string {
@@ -694,15 +769,15 @@ Item {
                 return "ERROR: No provider specified";
 
             KeybindsService.loadCheatsheet(provider);
-            root.hyprKeybindsModalLoader.active = true;
+            root.hyprKeybindsModalLoaderRef.active = true;
 
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return `KEYBINDS_TOGGLE_FAILED: ${provider}`;
 
-            if (root.hyprKeybindsModalLoader.item.shouldBeVisible)
-                root.hyprKeybindsModalLoader.item.close();
+            if (root.hyprKeybindsModalLoaderRef.item.shouldBeVisible)
+                root.hyprKeybindsModalLoaderRef.item.close();
             else
-                root.hyprKeybindsModalLoader.item.open();
+                root.hyprKeybindsModalLoaderRef.item.open();
             return `KEYBINDS_TOGGLE_SUCCESS: ${provider}`;
         }
 
@@ -711,15 +786,15 @@ Item {
                 return "ERROR: No provider specified";
 
             KeybindsService.loadCheatsheet(provider);
-            root.hyprKeybindsModalLoader.active = true;
+            root.hyprKeybindsModalLoaderRef.active = true;
 
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return `KEYBINDS_TOGGLE_FAILED: ${provider}`;
 
-            if (root.hyprKeybindsModalLoader.item.shouldBeVisible)
-                root.hyprKeybindsModalLoader.item.close();
+            if (root.hyprKeybindsModalLoaderRef.item.shouldBeVisible)
+                root.hyprKeybindsModalLoaderRef.item.close();
             else
-                root.hyprKeybindsModalLoader.item.open();
+                root.hyprKeybindsModalLoaderRef.item.open();
             return `KEYBINDS_TOGGLE_SUCCESS: ${provider} (${path})`;
         }
 
@@ -728,12 +803,12 @@ Item {
                 return "ERROR: No provider specified";
 
             KeybindsService.loadCheatsheet(provider);
-            root.hyprKeybindsModalLoader.active = true;
+            root.hyprKeybindsModalLoaderRef.active = true;
 
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return `KEYBINDS_OPEN_FAILED: ${provider}`;
 
-            root.hyprKeybindsModalLoader.item.open();
+            root.hyprKeybindsModalLoaderRef.item.open();
             return `KEYBINDS_OPEN_SUCCESS: ${provider}`;
         }
 
@@ -742,20 +817,20 @@ Item {
                 return "ERROR: No provider specified";
 
             KeybindsService.loadCheatsheet(provider);
-            root.hyprKeybindsModalLoader.active = true;
+            root.hyprKeybindsModalLoaderRef.active = true;
 
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return `KEYBINDS_OPEN_FAILED: ${provider}`;
 
-            root.hyprKeybindsModalLoader.item.open();
+            root.hyprKeybindsModalLoaderRef.item.open();
             return `KEYBINDS_OPEN_SUCCESS: ${provider} (${path})`;
         }
 
         function close(): string {
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return "KEYBINDS_CLOSE_FAILED";
 
-            root.hyprKeybindsModalLoader.item.close();
+            root.hyprKeybindsModalLoaderRef.item.close();
             return "KEYBINDS_CLOSE_SUCCESS";
         }
 
@@ -769,12 +844,12 @@ Item {
 
             KeybindsService.currentProvider = "hyprland";
             KeybindsService.loadBinds();
-            root.hyprKeybindsModalLoader.active = true;
+            root.hyprKeybindsModalLoaderRef.active = true;
 
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return "HYPR_KEYBINDS_OPEN_FAILED";
 
-            root.hyprKeybindsModalLoader.item.open();
+            root.hyprKeybindsModalLoaderRef.item.open();
             return "HYPR_KEYBINDS_OPEN_SUCCESS";
         }
 
@@ -782,10 +857,10 @@ Item {
             if (!CompositorService.isHyprland)
                 return "HYPR_NOT_AVAILABLE";
 
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return "HYPR_KEYBINDS_CLOSE_FAILED";
 
-            root.hyprKeybindsModalLoader.item.close();
+            root.hyprKeybindsModalLoaderRef.item.close();
             return "HYPR_KEYBINDS_CLOSE_SUCCESS";
         }
 
@@ -795,15 +870,15 @@ Item {
 
             KeybindsService.currentProvider = "hyprland";
             KeybindsService.loadBinds();
-            root.hyprKeybindsModalLoader.active = true;
+            root.hyprKeybindsModalLoaderRef.active = true;
 
-            if (!root.hyprKeybindsModalLoader.item)
+            if (!root.hyprKeybindsModalLoaderRef.item)
                 return "HYPR_KEYBINDS_TOGGLE_FAILED";
 
-            if (root.hyprKeybindsModalLoader.item.shouldBeVisible) {
-                root.hyprKeybindsModalLoader.item.close();
+            if (root.hyprKeybindsModalLoaderRef.item.shouldBeVisible) {
+                root.hyprKeybindsModalLoaderRef.item.close();
             } else {
-                root.hyprKeybindsModalLoader.item.open();
+                root.hyprKeybindsModalLoaderRef.item.open();
             }
             return "HYPR_KEYBINDS_TOGGLE_SUCCESS";
         }
@@ -868,204 +943,200 @@ Item {
         };
     }
 
+    function withBarConfig(selector: string, value: string, allowIsland: bool, action: var): string {
+        const {
+            barConfig,
+            error
+        } = getBarConfig(selector, value);
+        if (error)
+            return error;
+        if (!allowIsland && SettingsData.isIslandBarConfig(barConfig))
+            return "BAR_IS_ISLAND";
+        return action(barConfig);
+    }
+
     IpcHandler {
         function reveal(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            if (SettingsData.isIslandBarConfig(barConfig))
-                return "BAR_IS_ISLAND";
-            SettingsData.updateBarConfig(barConfig.id, {
-                visible: true
+            return withBarConfig(selector, value, false, bar => {
+                SettingsData.updateBarConfig(bar.id, {
+                    visible: true
+                });
+                return "BAR_SHOW_SUCCESS";
             });
-            return "BAR_SHOW_SUCCESS";
         }
 
         function hide(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            if (SettingsData.isIslandBarConfig(barConfig))
-                return "BAR_IS_ISLAND";
-            SettingsData.updateBarConfig(barConfig.id, {
-                visible: false
+            return withBarConfig(selector, value, false, bar => {
+                SettingsData.updateBarConfig(bar.id, {
+                    visible: false
+                });
+                return "BAR_HIDE_SUCCESS";
             });
-            return "BAR_HIDE_SUCCESS";
         }
 
         function toggle(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            if (SettingsData.isIslandBarConfig(barConfig))
-                return "BAR_IS_ISLAND";
-            SettingsData.updateBarConfig(barConfig.id, {
-                visible: !barConfig.visible
+            return withBarConfig(selector, value, false, bar => {
+                SettingsData.updateBarConfig(bar.id, {
+                    visible: !bar.visible
+                });
+                return !bar.visible ? "BAR_SHOW_SUCCESS" : "BAR_HIDE_SUCCESS";
             });
-            return !barConfig.visible ? "BAR_SHOW_SUCCESS" : "BAR_HIDE_SUCCESS";
         }
 
         function status(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            return barConfig.visible ? "visible" : "hidden";
+            return withBarConfig(selector, value, true, bar => bar.visible ? "visible" : "hidden");
         }
 
         function autoHide(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            if (SettingsData.isIslandBarConfig(barConfig))
-                return "BAR_IS_ISLAND";
-            SettingsData.updateBarConfig(barConfig.id, {
-                autoHide: true
+            return withBarConfig(selector, value, false, bar => {
+                SettingsData.updateBarConfig(bar.id, {
+                    autoHide: true
+                });
+                return "BAR_AUTO_HIDE_SUCCESS";
             });
-            return "BAR_AUTO_HIDE_SUCCESS";
         }
 
         function manualHide(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            if (SettingsData.isIslandBarConfig(barConfig))
-                return "BAR_IS_ISLAND";
-            SettingsData.updateBarConfig(barConfig.id, {
-                autoHide: false
+            return withBarConfig(selector, value, false, bar => {
+                SettingsData.updateBarConfig(bar.id, {
+                    autoHide: false
+                });
+                return "BAR_MANUAL_HIDE_SUCCESS";
             });
-            return "BAR_MANUAL_HIDE_SUCCESS";
         }
 
         function toggleAutoHide(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            if (SettingsData.isIslandBarConfig(barConfig))
-                return "BAR_IS_ISLAND";
-            SettingsData.updateBarConfig(barConfig.id, {
-                autoHide: !barConfig.autoHide
+            return withBarConfig(selector, value, false, bar => {
+                SettingsData.updateBarConfig(bar.id, {
+                    autoHide: !bar.autoHide
+                });
+                return bar.autoHide ? "BAR_MANUAL_HIDE_SUCCESS" : "BAR_AUTO_HIDE_SUCCESS";
             });
-            return barConfig.autoHide ? "BAR_MANUAL_HIDE_SUCCESS" : "BAR_AUTO_HIDE_SUCCESS";
         }
 
         function toggleReveal(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            if (SettingsData.isIslandBarConfig(barConfig))
-                return "BAR_IS_ISLAND";
-            if (!barConfig.autoHide)
-                return "BAR_AUTO_HIDE_DISABLED";
-            if (!(barConfig.visible ?? true)) {
-                SettingsData.updateBarConfig(barConfig.id, {
-                    visible: true
-                });
-                SettingsData.setBarIpcReveal(barConfig.id, true);
-                return "BAR_REVEAL_SUCCESS";
-            }
-            const revealed = SettingsData.toggleBarIpcReveal(barConfig.id);
-            return revealed ? "BAR_REVEAL_SUCCESS" : "BAR_TUCK_SUCCESS";
+            return withBarConfig(selector, value, false, bar => {
+                if (!bar.autoHide)
+                    return "BAR_AUTO_HIDE_DISABLED";
+                if (!(bar.visible ?? true)) {
+                    SettingsData.updateBarConfig(bar.id, {
+                        visible: true
+                    });
+                    SettingsData.setBarIpcReveal(bar.id, true);
+                    return "BAR_REVEAL_SUCCESS";
+                }
+                const revealed = SettingsData.toggleBarIpcReveal(bar.id);
+                return revealed ? "BAR_REVEAL_SUCCESS" : "BAR_TUCK_SUCCESS";
+            });
         }
 
         function getPosition(selector: string, value: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            const positions = ["top", "bottom", "left", "right"];
-            return positions[barConfig.position] || "unknown";
+            return withBarConfig(selector, value, true, bar => ["top", "bottom", "left", "right"][bar.position] || "unknown");
         }
 
         function setPosition(selector: string, value: string, position: string): string {
-            const {
-                barConfig,
-                error
-            } = getBarConfig(selector, value);
-            if (error)
-                return error;
-            const positionMap = {
-                "top": SettingsData.Position.Top,
-                "bottom": SettingsData.Position.Bottom,
-                "left": SettingsData.Position.Left,
-                "right": SettingsData.Position.Right
-            };
-            const posValue = positionMap[position.toLowerCase()];
-            if (posValue === undefined)
-                return "BAR_INVALID_POSITION";
-            SettingsData.updateBarConfig(barConfig.id, {
-                position: posValue
+            return withBarConfig(selector, value, true, bar => {
+                const positionMap = {
+                    "top": SettingsData.Position.Top,
+                    "bottom": SettingsData.Position.Bottom,
+                    "left": SettingsData.Position.Left,
+                    "right": SettingsData.Position.Right
+                };
+                const posValue = positionMap[position.toLowerCase()];
+                if (posValue === undefined)
+                    return "BAR_INVALID_POSITION";
+                SettingsData.updateBarConfig(bar.id, {
+                    position: posValue
+                });
+                return "BAR_POSITION_SET_SUCCESS";
             });
-            return "BAR_POSITION_SET_SUCCESS";
         }
 
         target: "bar"
     }
 
+    // Outside the handler so it stays a helper rather than a callable dock command.
+    function dockConfigFor(selector: string): var {
+        return SettingsData.dockConfigForAction(BarWidgetService.getFocusedScreenName(), selector);
+    }
+
     IpcHandler {
+        target: "dock"
+
         function reveal(): string {
-            SettingsData.setShowDock(true);
+            return revealFor("");
+        }
+        function hide(): string {
+            return hideFor("");
+        }
+        function toggle(): string {
+            return toggleFor("");
+        }
+        function status(): string {
+            return statusFor("");
+        }
+        function revealFor(selector: string): string {
+            const config = root.dockConfigFor(selector);
+            if (!config)
+                return "DOCK_NOT_FOUND";
+            SettingsData.updateDockConfig(config.id, {
+                enabled: true
+            });
             return "DOCK_SHOW_SUCCESS";
         }
-
-        function hide(): string {
-            SettingsData.setShowDock(false);
+        function hideFor(selector: string): string {
+            const config = root.dockConfigFor(selector);
+            if (!config)
+                return "DOCK_NOT_FOUND";
+            SettingsData.updateDockConfig(config.id, {
+                enabled: false
+            });
             return "DOCK_HIDE_SUCCESS";
         }
-
-        function toggle(): string {
-            SettingsData.toggleShowDock();
-            return SettingsData.showDock ? "DOCK_SHOW_SUCCESS" : "DOCK_HIDE_SUCCESS";
+        function toggleFor(selector: string): string {
+            const config = root.dockConfigFor(selector);
+            if (!config)
+                return "DOCK_NOT_FOUND";
+            return config.enabled ? hideFor(config.id) : revealFor(config.id);
         }
-
-        function status(): string {
-            return SettingsData.showDock ? "visible" : "hidden";
+        function statusFor(selector: string): string {
+            const config = root.dockConfigFor(selector);
+            return config ? (config.enabled ? "visible" : "hidden") : "DOCK_NOT_FOUND";
         }
-
+        function edit(): string {
+            return editFor("");
+        }
+        function editFor(selector: string): string {
+            const config = root.dockConfigFor(selector);
+            if (!config)
+                return "DOCK_NOT_FOUND";
+            if (!config.enabled)
+                return "DOCK_HIDDEN";
+            BarWidgetService.dockEditRequested(config.id);
+            return "DOCK_EDIT_SUCCESS";
+        }
         function autoHide(): string {
-            SettingsData.dockAutoHide = true;
-            SettingsData.saveSettings();
-            return "BAR_AUTO_HIDE_SUCCESS";
+            return autoHideFor("", true);
         }
-
         function manualHide(): string {
-            SettingsData.dockAutoHide = false;
-            SettingsData.saveSettings();
-            return "BAR_MANUAL_HIDE_SUCCESS";
+            return autoHideFor("", false);
         }
-
         function toggleAutoHide(): string {
-            SettingsData.dockAutoHide = !SettingsData.dockAutoHide;
-            SettingsData.saveSettings();
-            return SettingsData.dockAutoHide ? "BAR_AUTO_HIDE_SUCCESS" : "BAR_MANUAL_HIDE_SUCCESS";
+            const config = root.dockConfigFor("");
+            if (!config)
+                return "DOCK_NOT_FOUND";
+            return autoHideFor(config.id, !config.autoHide);
         }
-
-        target: "dock"
+        function autoHideFor(selector: string, enabled: bool): string {
+            const config = root.dockConfigFor(selector);
+            if (!config)
+                return "DOCK_NOT_FOUND";
+            SettingsData.updateDockConfig(config.id, {
+                autoHide: enabled,
+                smartAutoHide: false
+            });
+            return enabled ? "BAR_AUTO_HIDE_SUCCESS" : "BAR_MANUAL_HIDE_SUCCESS";
+        }
     }
 
     IpcHandler {
@@ -1077,6 +1148,8 @@ Item {
         function openWith(tab: string): string {
             if (!tab)
                 return "SETTINGS_OPEN_FAILED: No tab specified";
+            if (!SettingsTabs.resolvePage(tab))
+                return `SETTINGS_OPEN_FAILED: Unknown tab ${tab}`;
             PopoutService.openSettingsWithTab(tab);
             return `SETTINGS_OPEN_SUCCESS: ${tab}`;
         }
@@ -1094,6 +1167,8 @@ Item {
         function toggleWith(tab: string): string {
             if (!tab)
                 return "SETTINGS_TOGGLE_FAILED: No tab specified";
+            if (!SettingsTabs.resolvePage(tab))
+                return `SETTINGS_TOGGLE_FAILED: Unknown tab ${tab}`;
             PopoutService.toggleSettingsWithTab(tab);
             return `SETTINGS_TOGGLE_SUCCESS: ${tab}`;
         }
@@ -1106,27 +1181,14 @@ Item {
         function focusOrToggleWith(tab: string): string {
             if (!tab)
                 return "SETTINGS_FOCUS_OR_TOGGLE_FAILED: No tab specified";
+            if (!SettingsTabs.resolvePage(tab))
+                return `SETTINGS_FOCUS_OR_TOGGLE_FAILED: Unknown tab ${tab}`;
             PopoutService.focusOrToggleSettingsWithTab(tab);
             return `SETTINGS_FOCUS_OR_TOGGLE_SUCCESS: ${tab}`;
         }
 
         function tabs(): string {
-            var ids = [];
-            var structure = SettingsTabs.structure;
-            for (var i = 0; i < structure.length; i++) {
-                var cat = structure[i];
-                if (cat.separator)
-                    continue;
-                if (cat.id)
-                    ids.push(cat.id);
-                if (cat.children) {
-                    for (var j = 0; j < cat.children.length; j++) {
-                        if (cat.children[j].id)
-                            ids.push(cat.children[j].id);
-                    }
-                }
-            }
-            return ids.join("\n");
+            return SettingsTabs.listPageIds().join("\n");
         }
 
         function get(key: string): string {
@@ -1211,7 +1273,7 @@ Item {
             if (!widgetId)
                 return "ERROR: No widget ID specified";
 
-            if (!BarWidgetService.hasWidget(widgetId))
+            if (!BarWidgetService.ensureWidget(widgetId))
                 return `WIDGET_NOT_FOUND: ${widgetId}`;
 
             const success = BarWidgetService.triggerWidgetPopout(widgetId);
@@ -1221,7 +1283,7 @@ Item {
         function openWith(widgetId: string, mode: string): string {
             if (!widgetId)
                 return "ERROR: No widget ID specified";
-            if (!BarWidgetService.hasWidget(widgetId))
+            if (!BarWidgetService.ensureWidget(widgetId))
                 return `WIDGET_NOT_FOUND: ${widgetId}`;
 
             const widget = BarWidgetService.getWidgetOnFocusedScreen(widgetId);
@@ -1237,7 +1299,7 @@ Item {
         function toggleWith(widgetId: string, mode: string): string {
             if (!widgetId)
                 return "ERROR: No widget ID specified";
-            if (!BarWidgetService.hasWidget(widgetId))
+            if (!BarWidgetService.ensureWidget(widgetId))
                 return `WIDGET_NOT_FOUND: ${widgetId}`;
 
             const widget = BarWidgetService.getWidgetOnFocusedScreen(widgetId);
@@ -1253,7 +1315,7 @@ Item {
         function openQuery(widgetId: string, query: string): string {
             if (!widgetId)
                 return "ERROR: No widget ID specified";
-            if (!BarWidgetService.hasWidget(widgetId))
+            if (!BarWidgetService.ensureWidget(widgetId))
                 return `WIDGET_NOT_FOUND: ${widgetId}`;
 
             const widget = BarWidgetService.getWidgetOnFocusedScreen(widgetId);
@@ -1269,7 +1331,7 @@ Item {
         function toggleQuery(widgetId: string, query: string): string {
             if (!widgetId)
                 return "ERROR: No widget ID specified";
-            if (!BarWidgetService.hasWidget(widgetId))
+            if (!BarWidgetService.ensureWidget(widgetId))
                 return `WIDGET_NOT_FOUND: ${widgetId}`;
 
             const widget = BarWidgetService.getWidgetOnFocusedScreen(widgetId);
@@ -1504,6 +1566,7 @@ Item {
     // Coreflame: forms by the hour, from a terminal.
     //   dms ipc call formschedule on | off | status
     //   dms ipc call formschedule set khaslana 17:30
+    //   dms ipc call formschedule sun on | off   (Phainon at sunrise, Khaslana at sunset)
     IpcHandler {
         function on(): string {
             Form.setScheduleEnabled(true);
@@ -1519,8 +1582,18 @@ Item {
             return Form.setStart(name, time) ? status() : "ERROR: use a form (phainon, khaslana, reaver) and a time like 17:30";
         }
 
+        function sun(state: string): string {
+            if (state !== "on" && state !== "off")
+                return "ERROR: use on or off";
+            Form.setSunEnabled(state === "on");
+            return status();
+        }
+
         function status(): string {
-            return (Form.schedule.enabled ? "on" : "off") + "  phainon " + Form.schedule.phainon + "  khaslana " + Form.schedule.khaslana + "  reaver " + Form.schedule.reaver + "  now: " + Form.scheduledForm(new Date());
+            Form.checkSunDay();
+            const t = Form.sunTimes;
+            const sun = !Form.schedule.sun ? "off" : (t ? "on (sunrise " + t.sunrise + ", sunset " + t.sunset + ")" : Form.sunPolar ? "on (no sunrise or sunset today: using the set times)" : "on (no location known: using the set times)");
+            return (Form.schedule.enabled ? "on" : "off") + "  phainon " + Form.startOf("phainon") + "  khaslana " + Form.startOf("khaslana") + "  reaver " + Form.schedule.reaver + "  sun " + sun + "  now: " + Form.scheduledForm(new Date());
         }
 
         target: "formschedule"
@@ -1548,7 +1621,7 @@ Item {
             if (!PopoutService.clipboardHistoryModal) {
                 return "CLIPBOARD_NOT_AVAILABLE";
             }
-            PopoutService.clipboardHistoryModal.show();
+            PopoutService.openClipboardHistory();
             return "CLIPBOARD_OPEN_SUCCESS";
         }
 
@@ -1560,7 +1633,7 @@ Item {
             if (!PopoutService.clipboardHistoryModal) {
                 return "CLIPBOARD_NOT_AVAILABLE";
             }
-            PopoutService.clipboardHistoryModal.hide();
+            PopoutService.closeClipboardHistory();
             return "CLIPBOARD_CLOSE_SUCCESS";
         }
 
@@ -1572,7 +1645,7 @@ Item {
             if (!PopoutService.clipboardHistoryModal) {
                 return "CLIPBOARD_NOT_AVAILABLE";
             }
-            PopoutService.clipboardHistoryModal.toggle();
+            PopoutService.toggleClipboardHistory();
             return "CLIPBOARD_TOGGLE_SUCCESS";
         }
 
@@ -1582,16 +1655,28 @@ Item {
     // ! spotlight and launcher should be synonymous for backwards compat
     IpcHandler {
         function open(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerLauncher("open");
+                return "LAUNCHER_OPEN_SUCCESS";
+            }
             PopoutService.openDankLauncherV2();
             return "LAUNCHER_OPEN_SUCCESS";
         }
 
         function close(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerLauncher("close");
+                return "LAUNCHER_CLOSE_SUCCESS";
+            }
             PopoutService.closeDankLauncherV2();
             return "LAUNCHER_CLOSE_SUCCESS";
         }
 
         function toggle(): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerLauncher("toggle");
+                return "LAUNCHER_TOGGLE_SUCCESS";
+            }
             PopoutService.toggleDankLauncherV2();
             return "LAUNCHER_TOGGLE_SUCCESS";
         }
@@ -1611,11 +1696,19 @@ Item {
         }
 
         function openQuery(query: string): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerLauncher("open", query);
+                return "LAUNCHER_OPEN_QUERY_SUCCESS";
+            }
             PopoutService.openDankLauncherV2WithQuery(query);
             return "LAUNCHER_OPEN_QUERY_SUCCESS";
         }
 
         function toggleQuery(query: string): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerLauncher("toggle", query);
+                return "LAUNCHER_TOGGLE_QUERY_SUCCESS";
+            }
             PopoutService.toggleDankLauncherV2WithQuery(query);
             return "LAUNCHER_TOGGLE_QUERY_SUCCESS";
         }
@@ -1667,11 +1760,19 @@ Item {
         }
 
         function openQuery(query: string): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerLauncher("open", query);
+                return "SPOTLIGHT_OPEN_QUERY_SUCCESS";
+            }
             PopoutService.openDankLauncherV2WithQuery(query);
             return "SPOTLIGHT_OPEN_QUERY_SUCCESS";
         }
 
         function toggleQuery(query: string): string {
+            if (Form.chrome && Form.chromes.length > 0) {
+                root.getPreferredBar().triggerLauncher("toggle", query);
+                return "SPOTLIGHT_TOGGLE_QUERY_SUCCESS";
+            }
             PopoutService.toggleDankLauncherV2WithQuery(query);
             return "SPOTLIGHT_TOGGLE_QUERY_SUCCESS";
         }
@@ -1972,47 +2073,83 @@ Item {
             return enabledBool ? `DESKTOP_WIDGET_SYNC_POSITION_ENABLED: ${instanceId}` : `DESKTOP_WIDGET_SYNC_POSITION_DISABLED: ${instanceId}`;
         }
 
+        function edit(): string {
+            DesktopWidgetRegistry.editing = true;
+            return "DESKTOP_WIDGET_EDITOR_OPENED";
+        }
+
         target: "desktopWidget"
     }
 
     IpcHandler {
         function open(): string {
-            root.workspaceRenameModalLoader.active = true;
-            if (root.workspaceRenameModalLoader.item) {
+            root.workspaceRenameModalLoaderRef.active = true;
+            if (root.workspaceRenameModalLoaderRef.item) {
                 if (CompositorService.isAqueous)
-                    return root.workspaceRenameModalLoader.item.show("") ? "WORKSPACE_RENAME_MODAL_OPENED" : "WORKSPACE_RENAME_UNAVAILABLE";
-                const ws = NiriService.workspaces[NiriService.focusedWorkspaceId];
-                root.workspaceRenameModalLoader.item.show(ws?.name || "");
+                    return root.workspaceRenameModalLoaderRef.item.show("") ? "WORKSPACE_RENAME_MODAL_OPENED" : "WORKSPACE_RENAME_UNAVAILABLE";
+                root.workspaceRenameModalLoaderRef.item.show(root.workspaceRenameModalLoaderRef.item.focusedWorkspaceName());
                 return "WORKSPACE_RENAME_MODAL_OPENED";
             }
             return "WORKSPACE_RENAME_MODAL_NOT_FOUND";
         }
 
         function close(): string {
-            if (root.workspaceRenameModalLoader.item) {
-                root.workspaceRenameModalLoader.item.hide();
+            if (root.workspaceRenameModalLoaderRef.item) {
+                root.workspaceRenameModalLoaderRef.item.hide();
                 return "WORKSPACE_RENAME_MODAL_CLOSED";
             }
             return "WORKSPACE_RENAME_MODAL_NOT_FOUND";
         }
 
         function toggle(): string {
-            root.workspaceRenameModalLoader.active = true;
-            if (root.workspaceRenameModalLoader.item) {
-                if (root.workspaceRenameModalLoader.item.visible) {
-                    root.workspaceRenameModalLoader.item.hide();
+            root.workspaceRenameModalLoaderRef.active = true;
+            if (root.workspaceRenameModalLoaderRef.item) {
+                if (root.workspaceRenameModalLoaderRef.item.visible) {
+                    root.workspaceRenameModalLoaderRef.item.hide();
                     return "WORKSPACE_RENAME_MODAL_CLOSED";
                 }
                 if (CompositorService.isAqueous)
-                    return root.workspaceRenameModalLoader.item.show("") ? "WORKSPACE_RENAME_MODAL_OPENED" : "WORKSPACE_RENAME_UNAVAILABLE";
-                const ws = NiriService.workspaces[NiriService.focusedWorkspaceId];
-                root.workspaceRenameModalLoader.item.show(ws?.name || "");
+                    return root.workspaceRenameModalLoaderRef.item.show("") ? "WORKSPACE_RENAME_MODAL_OPENED" : "WORKSPACE_RENAME_UNAVAILABLE";
+                root.workspaceRenameModalLoaderRef.item.show(root.workspaceRenameModalLoaderRef.item.focusedWorkspaceName());
                 return "WORKSPACE_RENAME_MODAL_OPENED";
             }
             return "WORKSPACE_RENAME_MODAL_NOT_FOUND";
         }
 
         target: "workspace-rename"
+    }
+
+    IpcHandler {
+        function toggle(name: string): string {
+            if (!CompositorService.isHyprland)
+                return "SCRATCHPAD_UNSUPPORTED_COMPOSITOR";
+            CompositorService.toggleSpecialWorkspace(name);
+            return "SCRATCHPAD_TOGGLED";
+        }
+
+        function move(name: string): string {
+            if (!CompositorService.isHyprland)
+                return "SCRATCHPAD_UNSUPPORTED_COMPOSITOR";
+            const active = ToplevelManager.activeToplevel;
+            if (!active)
+                return "SCRATCHPAD_NO_FOCUSED_WINDOW";
+            CompositorService.moveWindowToSpecial(active, name || "special");
+            return "SCRATCHPAD_MOVED";
+        }
+
+        function restore(): string {
+            if (!CompositorService.isHyprland)
+                return "SCRATCHPAD_UNSUPPORTED_COMPOSITOR";
+            const active = ToplevelManager.activeToplevel;
+            if (!active)
+                return "SCRATCHPAD_NO_FOCUSED_WINDOW";
+            if (!CompositorService.windowScratchpadName(active))
+                return "SCRATCHPAD_WINDOW_NOT_IN_SCRATCHPAD";
+            CompositorService.moveWindowOutOfSpecial(active);
+            return "SCRATCHPAD_RESTORED";
+        }
+
+        target: "scratchpad"
     }
 
     IpcHandler {
@@ -2029,17 +2166,17 @@ Item {
         function open(): string {
             if (!CompositorService.isNiri && !CompositorService.isHyprland && !CompositorService.isMango)
                 return "WINDOW_RULES_UNSUPPORTED_COMPOSITOR";
-            root.windowRuleModalLoader.active = true;
-            if (root.windowRuleModalLoader.item) {
-                root.windowRuleModalLoader.item.show(getFocusedWindow());
+            root.windowRuleModalLoaderRef.active = true;
+            if (root.windowRuleModalLoaderRef.item) {
+                root.windowRuleModalLoaderRef.item.show(getFocusedWindow());
                 return "WINDOW_RULE_MODAL_OPENED";
             }
             return "WINDOW_RULE_MODAL_NOT_FOUND";
         }
 
         function close(): string {
-            if (root.windowRuleModalLoader.item) {
-                root.windowRuleModalLoader.item.hide();
+            if (root.windowRuleModalLoaderRef.item) {
+                root.windowRuleModalLoaderRef.item.hide();
                 return "WINDOW_RULE_MODAL_CLOSED";
             }
             return "WINDOW_RULE_MODAL_NOT_FOUND";
@@ -2048,13 +2185,13 @@ Item {
         function toggle(): string {
             if (!CompositorService.isNiri && !CompositorService.isHyprland && !CompositorService.isMango)
                 return "WINDOW_RULES_UNSUPPORTED_COMPOSITOR";
-            root.windowRuleModalLoader.active = true;
-            if (root.windowRuleModalLoader.item) {
-                if (root.windowRuleModalLoader.item.visible) {
-                    root.windowRuleModalLoader.item.hide();
+            root.windowRuleModalLoaderRef.active = true;
+            if (root.windowRuleModalLoaderRef.item) {
+                if (root.windowRuleModalLoaderRef.item.visible) {
+                    root.windowRuleModalLoaderRef.item.hide();
                     return "WINDOW_RULE_MODAL_CLOSED";
                 }
-                root.windowRuleModalLoader.item.show(getFocusedWindow());
+                root.windowRuleModalLoaderRef.item.show(getFocusedWindow());
                 return "WINDOW_RULE_MODAL_OPENED";
             }
             return "WINDOW_RULE_MODAL_NOT_FOUND";
@@ -2064,6 +2201,10 @@ Item {
     }
 
     IpcHandler {
+        function cycle(): string {
+            return NiriService.cycleSingleOutput();
+        }
+
         function listProfiles(): string {
             const profiles = DisplayConfigState.validatedProfiles;
             const activeId = SessionData.getActiveDisplayProfile(CompositorService.compositor);

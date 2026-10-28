@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Services
 
 // Which of the three Coreflame forms is showing, and the shape rules that follow from it.
 // Inactive (form === "") whenever another theme is selected, so the shell then looks like stock DMS.
@@ -47,6 +48,7 @@ Singleton {
     function registerChrome(item) {
         chromes = chromes.concat([item]);
         Coreflames.earn("worldbearing");
+        playOpening();
     }
 
     function unregisterChrome(item) {
@@ -72,14 +74,29 @@ Singleton {
     readonly property int cycle: 33550336 + boots
     readonly property string cycleText: cycle.toLocaleString(Qt.locale("en_US"), "f", 0)
 
-    readonly property string epithet: phainon ? "The Deliverer" : (khaslana ? "Worldbearer" : (reaver ? "of the Deepest Dark" : ""))
-    readonly property string quote: phainon ? "Amphoreus will welcome a true dawn." : (khaslana ? "And now, I am the fire at the end of the long night." : (reaver ? "Here we go... again." : ""))
-    // What each form says as a new cycle begins
-    // A line in Cyrene's voice for each start, chosen by the boot count. Written for this
-    // rice in her spirit; they are not quotes from the game.
-    readonly property var cyreneLines: ["Even if the world forgets, I'll remember you.", "Every flower that falls blooms again somewhere.", "Go on. I'll be waiting at the end of the road.", "Hold the light a little longer, hero.", "One more dawn. Let's see it together.", "You've carried it all this way. Rest a moment.", "The path loops, but your steps are never the same.", "When you're lost, follow the scent of the wheat fields."]
+    readonly property string epithet: phainon ? "The Deliverer" : (khaslana ? "Bearer of Chaos" : (reaver ? "of the Deepest Dark" : ""))
+    // Lock-screen quotes: game lines, one per boot from each form's pool.
+    readonly property var lockQuotes: ({
+            "phainon": ["Amphoreus will welcome a true dawn.", "They say, if suffering has an end, then I will be the Deliverer.", "May this world never again need a Deliverer.", "My wish? My wish is to fulfill everyone else's wishes. If I can't fulfill them... then send them on to tomorrow."],
+            "khaslana": ["And now, I am the fire at the end of the long night.", "Are you ready? Nanook, I brought you destruction!", "If this is not the end, then I will keep walking, until I witness the end of this journey. But I will never submit to this idea of fate. Never!", "If what lies ahead is a mass of chaos, I will tear it apart... then usher in the first ray of blazing sunlight.", "Climb, fall, climb, fall, climb again, and fall..."],
+            "reaver": ["Why not... let wrath... incinerate fate...?"]
+        })
+    readonly property string quote: {
+        const pool = lockQuotes[form] ?? [];
+        return pool.length ? pool[boots % pool.length] : "";
+    }
+    // A line in Cyrene's voice for each start, chosen by the boot count. The first eight are
+    // original fan-written lines in her spirit, not her dialogue; the last is hers, from the game.
+    readonly property var cyreneLines: ["Even if the world forgets, I'll remember you.", "Every flower that falls blooms again somewhere.", "Go on. I'll be waiting at the end of the road.", "Hold the light a little longer, hero.", "One more dawn. Let's see it together.", "You've carried it all this way. Rest a moment.", "The path loops, but your steps are never the same.", "When you're lost, follow the scent of the wheat fields.", "Of course, this will be a romantic story like none that has come before. You think so too, right?"]
     readonly property string cyreneLine: cyreneLines[boots % cyreneLines.length]
-    readonly property string greeting: phainon ? "Remember the past, and become the hero of tomorrow." : (khaslana ? "As long as I burn, they'll never truly leave me." : (reaver ? "Climb, fall, climb, fall, climb again." : ""))
+    // What each form says as a new cycle begins (island, first start after boot)
+    readonly property string greeting: phainon ? "Remember the past, and become the hero of tomorrow." : (khaslana ? "I'll remember this world through anger. As long as I burn, they'll never truly leave me." : (reaver ? "The Flame-Chase will not end..." : ""))
+    // The island notice when the user switches to this form
+    readonly property string formLine: phainon ? "Light up the dawn!" : (khaslana ? "I will never yield to such a fate." : (reaver ? "The Flame-Chase will not end..." : ""))
+    // Said to him; the lock screen asks it inside the password box.
+    readonly property string passwordHint: phainon ? "Phainon of Aedes Elysiae, what is your dream?" : ""
+    // His breaking point, shown while he becomes Khaslana.
+    readonly property string transformCaption: khaslana ? "Why... did you... take them all away... from me!?" : ""
 
     // Kept in stateDir/boots as "<count> <boot id>": one more each time the kernel's boot id is new.
     // Seeded once from the journal; after that, journal rotation or vacuuming can't lower it.
@@ -91,12 +108,43 @@ Singleton {
                 const [count, isNew] = text.trim().split(" ");
                 root.boots = parseInt(count) || 0;
                 root.newBoot = isNew === "1";
+                root.playOpening();
             }
         }
     }
 
     // True when this is the shell's first start since the machine booted (the opening cinematic plays).
     property bool newBoot: false
+    property bool openingPlayed: false
+    // Bumped by any lock surface on key or pointer input, so the lock video stops on every screen.
+    property int lockInput: 0
+
+    // The boot check and the first chrome can finish in either order; whichever is last starts it.
+    // Waits until the screens have stopped changing: at a real boot the outputs are still being set
+    // up and the chrome holding the video could be rebuilt mid-play, which hid the opening.
+    function playOpening() {
+        if (!newBoot || openingPlayed || chromes.length === 0 || !active || !live)
+            return;
+        openingSettle.restart();
+    }
+
+    Timer {
+        id: openingSettle
+        interval: 2000
+        onTriggered: {
+            if (!root.newBoot || root.openingPlayed || root.chromes.length === 0 || !root.active || !root.live)
+                return;
+            root.openingPlayed = true;
+            console.info("Coreflame opening: playing");
+            root.cinematic("opening", cut => {
+                console.info("Coreflame opening:", cut ? "cut short by a rebuild, playing again" : "done");
+                if (cut) {
+                    root.openingPlayed = false;
+                    root.playOpening();
+                }
+            });
+        }
+    }
 
     // Plays ~/.config/coreflame/cinematics/<name>.mkv full screen, then runs `then`. Without a live
     // Coreflame chrome (stock DMS, the sandbox) it runs `then` straight away.
@@ -249,7 +297,43 @@ Singleton {
             property string phainon: "08:00"
             property string khaslana: "17:00"
             property string reaver: "01:00"
+            // Follow the sun: Phainon starts at sunrise, Khaslana at sunset, the Reaver keeps its time.
+            property bool sun: false
         }
+    }
+
+    // Today's sunrise and sunset ("HH:MM") at the weather location, or null when none is known.
+    // sunDay is moved on by checkSunDay (schedule timer, panel, status), so this is worked out once a day.
+    property string sunDay: new Date().toDateString()
+    function checkSunDay() {
+        const day = new Date().toDateString();
+        if (day !== sunDay)
+            sunDay = day;
+    }
+    readonly property var sunRaw: {
+        if (!active || sunDay === "")
+            return null;
+        const now = new Date();
+        return WeatherService.getSunTimes(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12));
+    }
+    // Polar day or night: the location is known, but there is no sunrise or sunset today.
+    readonly property bool sunPolar: !!sunRaw && sunTimes === null
+    readonly property var sunTimes: {
+        const t = sunRaw;
+        if (!t || isNaN(t.sunrise) || isNaN(t.sunset))
+            return null;
+        const hm = d => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+        return {
+            "sunrise": hm(t.sunrise),
+            "sunset": hm(t.sunset)
+        };
+    }
+
+    // The time a form really starts: by the sun when that is on and known, else its set time.
+    function startOf(name) {
+        if (schedule.sun && sunTimes && name !== "reaver")
+            return name === "phainon" ? sunTimes.sunrise : sunTimes.sunset;
+        return schedule[name];
     }
 
     function minutesOf(text) {
@@ -259,7 +343,7 @@ Singleton {
 
     function scheduledForm(now) {
         const at = now.getHours() * 60 + now.getMinutes();
-        const starts = [["phainon", minutesOf(schedule.phainon)], ["khaslana", minutesOf(schedule.khaslana)], ["reaver", minutesOf(schedule.reaver)]];
+        const starts = [["phainon", minutesOf(startOf("phainon"))], ["khaslana", minutesOf(startOf("khaslana"))], ["reaver", minutesOf(startOf("reaver"))]];
         starts.sort((a, b) => a[1] - b[1]);
         // Before the first start of the day, the last one of yesterday still holds.
         let pick = starts[starts.length - 1][0];
@@ -271,10 +355,16 @@ Singleton {
     }
 
     function followSchedule(force) {
+        checkSunDay();
         if (!active || !schedule.enabled) {
             lastScheduled = "";
             return;
         }
+        // By the sun, but the weather location is still on its way (start-up, location change):
+        // wait for it instead of switching by the set times and back. A failed fetch ends the wait;
+        // the island chrome always holds a weather ref while a form is active, so a fetch does run.
+        if (schedule.sun && !sunTimes && SettingsData.weatherEnabled && WeatherService.weather.loading)
+            return;
         const wanted = scheduledForm(new Date());
         if (wanted === lastScheduled && !force)
             return;
@@ -302,7 +392,8 @@ Singleton {
             "enabled": schedule.enabled,
             "phainon": schedule.phainon,
             "khaslana": schedule.khaslana,
-            "reaver": schedule.reaver
+            "reaver": schedule.reaver,
+            "sun": schedule.sun
         }, null, 2) + "\n");
         // Not forced: a form picked by hand stays unless the edit moved the current slot.
         followSchedule(false);
@@ -322,6 +413,12 @@ Singleton {
         schedule.enabled = on;
         // Turning it on applies the current slot straight away.
         lastScheduled = "";
+        saveSchedule();
+    }
+
+    function setSunEnabled(on) {
+        console.info("Coreflame schedule: follow the sun", on ? "on" : "off");
+        schedule.sun = on;
         saveSchedule();
     }
 

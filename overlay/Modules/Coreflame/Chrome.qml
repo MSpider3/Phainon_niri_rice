@@ -9,6 +9,7 @@ import Quickshell.Services.Notifications
 import qs.Common
 import qs.Services
 import qs.Widgets
+import qs.DCommon.Widgets as DW
 
 // The Coreflame top of screen: a window-manager tab in the left corner, a control tab in the
 // right corner, and the island between them. One transparent surface per screen; only the
@@ -62,12 +63,25 @@ PanelWindow {
         popout.setTriggerPosition(pos.x, pos.y, pos.width, section, win.screen, 0, win.strip, 4, barConfig);
     }
 
-    // `what`: "open", "close", or toggle when left out
-    function triggerControlCenter(what) {
+    // `what`: "open", "close", "back" (collapse the open section), or toggle when left out.
+    // `section` opens one of the panel's sections; stock section names map onto them.
+    function triggerControlCenter(what, section) {
+        if (what === "back") {
+            const panel = controlLoader.item;
+            if (!panel?.shown || !panel.section)
+                return false;
+            panel.toggleSection(panel.section);
+            return true;
+        }
         controlLoader.active = true;
         const item = controlLoader.item;
-        if (what === "open")
+        if (what === "open") {
             item?.open();
+            const s = String(section ?? "");
+            const key = ["connectivity", "sound", "power", "system"].includes(s) ? s : /^(wifi|network|ethernet|bluetooth|vpn)/i.test(s) ? "connectivity" : /^(audio|mic|sound|volume)/i.test(s) ? "sound" : /^(battery|power)/i.test(s) ? "power" : "system";
+            if (item && s && item.section !== key)
+                item.toggleSection(key);
+        }
         else if (what === "close")
             item?.close();
         else
@@ -84,8 +98,14 @@ PanelWindow {
         const views = {
             "overview": "",
             "media": "music",
+            "music": "music",
             "wallpaper": "wallpaper",
-            "weather": "weather"
+            "weather": "weather",
+            "notifications": "notifications",
+            "wellbeing": "wellbeing",
+            "network": "network",
+            "time": "time",
+            "clock": "time"
         };
         dashLoader.active = true;
         if (!dashLoader.item)
@@ -99,13 +119,12 @@ PanelWindow {
         return true;
     }
 
-    // Notifications live in the control panel's collapsible section.
-    function triggerNotifications() {
-        controlLoader.active = true;
-        if (!controlLoader.item)
-            return;
-        controlLoader.item.notificationsOpen = true;
-        controlLoader.item.toggle();
+    // Notifications are a dashboard view, grown out of the island like the rest.
+    function triggerNotifications(what) {
+        // "close" leaves the dashboard alone when it is showing something else.
+        if (what === "close" && !(dashLoader.active && dashLoader.item?.view === "notifications"))
+            return false;
+        return triggerDashTab("notifications", "", what);
     }
 
     function triggerWallpaperBrowser() {
@@ -116,7 +135,14 @@ PanelWindow {
     }
 
     Component.onCompleted: Form.registerChrome(win)
-    Component.onDestruction: Form.unregisterChrome(win)
+    Component.onDestruction: {
+        Form.unregisterChrome(win);
+        // A video still waiting for its window would be lost with this chrome; hand it back as cut.
+        const wanted = pendingCinematic;
+        pendingCinematic = null;
+        if (wanted?.then)
+            wanted.then(true);
+    }
 
     SystemClock {
         id: clock
@@ -245,6 +271,11 @@ PanelWindow {
         targetScreen: win.screen
     }
 
+    // The clock behind the form's character on the wallpaper
+    DepthClock {
+        targetScreen: win.screen
+    }
+
     LazyLoader {
         id: launcherLoader
 
@@ -263,8 +294,10 @@ PanelWindow {
             item.open(typed);
         else if (what === "close")
             item.close();
+        else if (item.shown)
+            item.close();
         else
-            item.toggle();
+            item.open(typed);
     }
 
     LazyLoader {
@@ -289,29 +322,48 @@ PanelWindow {
             powerLoader.item?.toggle();
     }
 
+    // Right after the shell starts the video window may not exist yet; the request then waits for
+    // it, at most 3 s, after which `then` (restart, shut down) runs without the video.
+    property var pendingCinematic: null
+
     function playCinematic(file, then) {
         cinemaLoader.active = true;
-        if (cinemaLoader.item)
+        if (cinemaLoader.item) {
             cinemaLoader.item.play(file, then);
-        else if (then)
-            then();
+            return;
+        }
+        pendingCinematic = {
+            "file": file,
+            "then": then
+        };
+        cinemaWait.restart();
     }
 
     LazyLoader {
         id: cinemaLoader
+
+        onItemChanged: {
+            const wanted = win.pendingCinematic;
+            if (!item || !wanted)
+                return;
+            win.pendingCinematic = null;
+            cinemaWait.stop();
+            item.play(wanted.file, wanted.then);
+        }
 
         Cinematic {
             targetScreen: win.screen
         }
     }
 
-    // The opening plays once per boot, on the shell's first start.
-    Connections {
-        target: Form
-
-        function onNewBootChanged() {
-            if (Form.newBoot && win.lead)
-                Form.cinematic("opening");
+    Timer {
+        id: cinemaWait
+        interval: 3000
+        onTriggered: {
+            const wanted = win.pendingCinematic;
+            win.pendingCinematic = null;
+            if (wanted?.then)
+                wanted.then();
         }
     }
 
@@ -339,6 +391,97 @@ PanelWindow {
         if (!item)
             return;
         if (what === "open")
+            item.open();
+        else if (what === "close")
+            item.close();
+        else
+            item.toggle();
+    }
+
+    // Any panel that grows out of the island. Reading a LazyLoader's item would load it, hence `active` first.
+    readonly property int panelsOpen: [dashLoader, launcherLoader, clipboardLoader, processLoader, notepadLoader].filter(l => l.active && l.item?.shown).length
+    readonly property bool panelOpen: panelsOpen > 0
+    // The notice maps only once the panel has grown, so it lands above the panel's surface; it
+    // remaps whenever another panel opens or closes, or it would end up underneath the new one.
+    property bool panelSettled: false
+    onPanelsOpenChanged: panelSettled = false
+
+    Timer {
+        interval: Theme.mediumDuration + 60
+        running: win.panelOpen && !win.panelSettled
+        onTriggered: win.panelSettled = true
+    }
+
+    // A notification arriving while an island panel is open hangs inside that panel's top edge,
+    // just under the island, instead of taking the island over.
+    LazyLoader {
+        id: noticeLoader
+        active: win.panelSettled && !!island.latest
+
+        PanelWindow {
+            readonly property bool hovered: noticeHover.hovered
+
+            screen: win.screen
+            color: "transparent"
+            exclusionMode: ExclusionMode.Ignore
+            WlrLayershell.namespace: "coreflame:notice"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            anchors.top: true
+            margins.top: win.strip + 8
+            implicitWidth: noticeFace.implicitWidth + 32
+            implicitHeight: 34
+
+            CfSurface {
+                anchors.fill: parent
+                color: Theme.surfaceContainerHigh
+                edgeColor: Theme.withAlpha(Theme.primary, 0.6)
+                radius: 17
+            }
+
+            HoverHandler {
+                id: noticeHover
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (island.latest)
+                        island.latest.popup = false;
+                }
+            }
+
+            ToastFace {
+                id: noticeFace
+                anchors.centerIn: parent
+                height: parent.height
+                compact: true
+                note: island.latest
+            }
+        }
+    }
+
+    LazyLoader {
+        id: notepadLoader
+
+        NotepadPanel {
+            targetScreen: win.screen
+            strip: win.strip
+        }
+    }
+
+    // `path` opens that file in a tab of its own.
+    function triggerNotepad(what, path) {
+        if (what === "close" && !notepadLoader.active)
+            return;
+        notepadLoader.active = true;
+        const item = notepadLoader.item;
+        if (!item)
+            return;
+        if (path)
+            item.openFile(path);
+        else if (what === "open")
             item.open();
         else if (what === "close")
             item.close();
@@ -537,6 +680,97 @@ PanelWindow {
         }
     }
 
+    // Notification face: who, what, and the notification's own buttons. Shown on the island, or
+    // inside an island panel's top edge (`compact`, no lore line) while one is open.
+    component ToastFace: Row {
+        id: face
+
+        property var note: null
+        property bool compact: false
+
+        spacing: 10
+
+        DW.DIcon {
+            anchors.verticalCenter: parent.verticalCenter
+            name: "notifications_active"
+            size: 20
+            color: Theme.primary
+        }
+
+        // A line of lore in front of every notification: a decree, a recurrence notice,
+        // or a log line from the cycle.
+        StyledText {
+            visible: Form.active && !face.compact
+            anchors.verticalCenter: parent.verticalCenter
+            text: Form.phainon ? "DECREE" : (Form.khaslana ? "[ RECURRENCE NOTICE ]" : "// signal caught in cycle " + Form.cycleText)
+            font.family: Form.phainon ? Form.display(Theme.fontFamily) : Theme.monoFontFamily
+            font.pixelSize: Theme.fontSizeSmall
+            font.letterSpacing: Form.phainon ? 1.5 : 0
+            color: Form.reaver ? Theme.withAlpha(Theme.surfaceText, 0.45) : Theme.secondary
+        }
+
+        StyledText {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, face.compact ? 170 : 200)
+            elide: Text.ElideRight
+            text: face.note?.summary || face.note?.appName || ""
+            font.pixelSize: Theme.fontSizeMedium
+            font.weight: Font.DemiBold
+            color: Theme.surfaceText
+        }
+
+        StyledText {
+            visible: !!face.note?.body
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, face.compact ? 220 : 300)
+            elide: Text.ElideRight
+            maximumLineCount: 1
+            textFormat: Text.PlainText
+            text: (face.note?.body ?? "").replace(/\s+/g, " ")
+            font.pixelSize: Theme.fontSizeMedium
+            color: Theme.withAlpha(Theme.surfaceText, 0.7)
+        }
+
+        Repeater {
+            model: face.note ? face.note.actions.slice(0, 2) : []
+
+            Item {
+                id: toastAction
+                required property var modelData
+                anchors.verticalCenter: parent.verticalCenter
+                width: actionLabel.implicitWidth + 18
+                height: 24
+
+                CfSurface {
+                    anchors.fill: parent
+                    color: Theme.primary
+                    edgeWidth: 0
+                    radius: 12
+                    cut: 5
+                }
+
+                StyledText {
+                    id: actionLabel
+                    anchors.centerIn: parent
+                    text: Form.reaver ? toastAction.modelData.text.toLowerCase() : toastAction.modelData.text
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.DemiBold
+                    color: Theme.primaryText
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        toastAction.modelData.invoke();
+                        if (face.note)
+                            face.note.popup = false;
+                    }
+                }
+            }
+        }
+    }
+
     // ── centre: the island ──
     Item {
         id: island
@@ -553,10 +787,12 @@ PanelWindow {
         readonly property bool slit: Form.reaver && !islandHover.hovered
 
         // The newest incoming notification takes the island over until it times out or is clicked.
-        readonly property var toast: NotificationService.popups.length > 0 ? NotificationService.popups[NotificationService.popups.length - 1] : null
-        onToastChanged: {
+        // While an island panel is open it shows in the panel's top edge instead (noticeLoader).
+        readonly property var latest: NotificationService.popups.length > 0 ? NotificationService.popups[NotificationService.popups.length - 1] : null
+        readonly property var toast: win.panelOpen ? null : latest
+        onLatestChanged: {
             toastTimer.restart();
-            if (toast && win.lead)
+            if (latest && win.lead)
                 Coreflames.earn("romance");
         }
         onPlayingChanged: {
@@ -577,6 +813,40 @@ PanelWindow {
             activityTimer.restart();
         }
 
+        // Caps lock, mic, touchpad and workspace pop-ups (the stock OSDs are off while the chrome is up).
+        // Phainon leads with a sun, Khaslana glitches in, the Reaver keeps only the lowercase line.
+        function osd(icon, title) {
+            announce({
+                "icon": icon,
+                "title": title,
+                "osd": true
+            }, 1800);
+        }
+
+        onActivityChanged: {
+            if (activity?.osd && Form.khaslana && !Motion.still)
+                glitchIn.restart();
+        }
+
+        // Copied from the stock WorkspaceOSD: the first workspace seen is only remembered, and
+        // switches inside the overview stay quiet.
+        readonly property var workspace: CompositorService.activeWorkspaceForScreen(win.screen?.name ?? "")
+        property var lastWorkspaceId: null
+        function workspaceSwitched() {
+            const ws = workspace;
+            if (!ws || ws.id === undefined || ws.id === null || lastWorkspaceId === ws.id)
+                return;
+            // Track the id even while the setting is off: the island lives all session, unlike the stock OSD.
+            const first = lastWorkspaceId === null;
+            lastWorkspaceId = ws.id;
+            if (first || !SettingsData.osdWorkspaceEnabled || CompositorService.overviewActiveForScreen(win.screen?.name))
+                return;
+            const num = ws.idx > 0 ? ws.idx : null;
+            const name = (ws.name ?? "").trim();
+            osd("view_module", num === null ? (name || "Workspace") : "Workspace " + num + (name && name !== String(num) ? ": " + name : ""));
+        }
+        onWorkspaceChanged: workspaceSwitched()
+
         function nudgeVolume(up) {
             const audio = AudioService.sink?.audio;
             if (!audio)
@@ -590,7 +860,10 @@ PanelWindow {
         x: Math.round((win.width - width) / 2)
         clip: true
 
-        Component.onCompleted: WeatherService.addRef()
+        Component.onCompleted: {
+            WeatherService.addRef();
+            workspaceSwitched();
+        }
         Component.onDestruction: WeatherService.removeRef()
 
         // Phainon settles with a small overshoot, Khaslana glides in heavily, the Flame Reaver just moves.
@@ -640,10 +913,10 @@ PanelWindow {
         Timer {
             id: toastTimer
             interval: 6000
-            running: island.toast !== null && !islandHover.hovered
+            running: island.latest !== null && !islandHover.hovered && !(noticeLoader.active && noticeLoader.item?.hovered)
             onTriggered: {
-                if (island.toast)
-                    island.toast.popup = false;
+                if (island.latest)
+                    island.latest.popup = false;
             }
         }
 
@@ -677,6 +950,8 @@ PanelWindow {
             target: AudioService.sink?.audio ?? null
 
             function onVolumeChanged() {
+                if (!SettingsData.osdVolumeEnabled)
+                    return;
                 const v = AudioService.sink.audio.volume;
                 island.announce({
                     "icon": AudioService.sinkVolumeIconName,
@@ -686,6 +961,8 @@ PanelWindow {
             }
 
             function onMutedChanged() {
+                if (!SettingsData.osdVolumeEnabled)
+                    return;
                 const muted = AudioService.sink.audio.muted;
                 island.announce({
                     "icon": AudioService.sinkVolumeIconName,
@@ -699,11 +976,47 @@ PanelWindow {
             target: DisplayService
 
             function onBrightnessChanged(showOsd) {
+                if (!showOsd || !SettingsData.osdBrightnessEnabled)
+                    return;
                 island.announce({
                     "icon": DisplayService.brightnessIconName(DisplayService.getCurrentDeviceInfo()),
                     "title": DisplayService.brightnessLevel + "%",
                     "value": DisplayService.brightnessLevel / 100
                 });
+            }
+        }
+
+        Connections {
+            id: capsWatch
+            target: DMSService
+            property bool last: false
+            Component.onCompleted: last = DMSService.capsLockState
+
+            function onCapsLockStateChanged() {
+                const on = DMSService.capsLockState;
+                if (capsWatch.last !== on && SettingsData.osdCapsLockEnabled)
+                    island.osd(on ? "shift_lock" : "shift_lock_off", "Caps Lock " + (on ? "on" : "off"));
+                capsWatch.last = on;
+            }
+        }
+
+        Connections {
+            target: AudioService.source?.audio ?? null
+
+            function onMutedChanged() {
+                const muted = AudioService.source.audio.muted;
+                if (SettingsData.osdMicMuteEnabled)
+                    island.osd(muted ? "mic_off" : "mic", muted ? "Microphone muted" : "Microphone on");
+            }
+        }
+
+        Connections {
+            target: NiriService
+
+            function onTouchpadToggled() {
+                const on = NiriService.touchpadEnabled;
+                if (SettingsData.osdTouchpadEnabled)
+                    island.osd(on ? "touchpad_mouse" : "touchpad_mouse_off", "Touchpad " + (on ? "on" : "off"));
             }
         }
 
@@ -777,10 +1090,11 @@ PanelWindow {
             enabled: win.lead
 
             function onGathered(name) {
+                // The Flame Reaver does not gather a Coreflame; he takes it.
                 island.announce({
                     "icon": "local_fire_department",
-                    "title": "Coreflame of " + Coreflames.titans[name][0],
-                    "sub": "Flame-Chase " + Coreflames.count + " / 12"
+                    "title": "Coreflame of " + Coreflames.titans[name][0] + (Form.reaver ? " · taken" : ""),
+                    "sub": (Form.reaver ? "" : "Flame-Chase ") + Coreflames.count + " / 12"
                 }, 3200);
             }
         }
@@ -797,7 +1111,7 @@ PanelWindow {
                 island.announce({
                     "icon": Form.phainon ? "wb_sunny" : (Form.khaslana ? "local_fire_department" : "dark_mode"),
                     "title": Form.phainon ? "Phainon" : (Form.khaslana ? "Khaslana" : "Flame Reaver"),
-                    "sub": Form.phainon ? "The Deliverer" : (Form.khaslana ? "Worldbearer" : "of the Deepest Dark")
+                    "sub": Form.formLine
                 }, 2800);
             }
         }
@@ -869,7 +1183,7 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
 
-                DankIcon {
+                DW.DIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     name: WeatherService.getWeatherIcon(WeatherService.weather.wCode)
                     size: 18
@@ -948,13 +1262,14 @@ PanelWindow {
                 color: Theme.withAlpha(Theme.outline, 0.9)
             }
 
-            // The Flame Reaver at rest is only the time and a slit in the mask,
+            // The Flame Reaver at rest is only the time and his mask,
             // lit when something is waiting or playing. Hovering opens the rest.
-            Rectangle {
+            CfGlyph {
                 visible: island.slit
                 anchors.verticalCenter: parent.verticalCenter
-                width: 16
-                height: 2
+                name: "mask"
+                size: 15
+                strokeWidth: 1.6
                 color: (NotificationService.unreadCount > 0 || island.playing) ? Theme.live : Theme.withAlpha(Theme.surfaceText, 0.3)
             }
 
@@ -974,7 +1289,7 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
 
-                DankIcon {
+                DW.DIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     name: WeatherService.getWeatherIcon(WeatherService.weather.wCode)
                     size: 18
@@ -995,7 +1310,7 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
 
-                DankIcon {
+                DW.DIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     name: "timer"
                     size: 17
@@ -1010,6 +1325,32 @@ PanelWindow {
                 }
             }
 
+            // Do Not Disturb with an end time says until when. The end is fixed, so no timer.
+            Row {
+                id: dndRow
+                readonly property string until: SessionData.doNotDisturb && SessionData.doNotDisturbUntil > 0 ? Qt.formatTime(new Date(SessionData.doNotDisturbUntil), "HH:mm") : ""
+                visible: until !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+
+                DW.DIcon {
+                    visible: Form.phainon
+                    anchors.verticalCenter: parent.verticalCenter
+                    // Not a moon: the night weather icon beside it is already one
+                    name: "notifications_paused"
+                    size: 17
+                    color: Theme.secondary
+                }
+
+                StyledText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Form.khaslana ? "SILENCED · " + dndRow.until : (Form.reaver ? "// muted until " : "Muted until ") + dndRow.until
+                    font.family: Form.phainon ? Theme.fontFamily : Theme.monoFontFamily
+                    font.pixelSize: Theme.fontSizeMedium
+                    color: Form.khaslana ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.75)
+                }
+            }
+
             // Recording, microphone and camera in use
             Row {
                 visible: NiriService.hasActiveCast || PrivacyService.microphoneActive || PrivacyService.cameraActive
@@ -1017,7 +1358,7 @@ PanelWindow {
                 spacing: 6
 
                 // Shared, not recorded: an icon and nothing else
-                DankIcon {
+                DW.DIcon {
                     visible: NiriService.hasActiveCast && !island.recording
                     anchors.verticalCenter: parent.verticalCenter
                     name: "screen_share"
@@ -1042,7 +1383,7 @@ PanelWindow {
                     color: Theme.error
                 }
 
-                DankIcon {
+                DW.DIcon {
                     visible: PrivacyService.microphoneActive
                     anchors.verticalCenter: parent.verticalCenter
                     name: "mic"
@@ -1050,7 +1391,7 @@ PanelWindow {
                     color: Theme.warning
                 }
 
-                DankIcon {
+                DW.DIcon {
                     visible: PrivacyService.cameraActive
                     anchors.verticalCenter: parent.verticalCenter
                     name: "videocam"
@@ -1082,7 +1423,7 @@ PanelWindow {
                         visible: status === Image.Ready
                     }
 
-                    DankIcon {
+                    DW.DIcon {
                         anchors.centerIn: parent
                         visible: !(island.player?.trackArtUrl)
                         name: "music_note"
@@ -1105,7 +1446,7 @@ PanelWindow {
                 Repeater {
                     model: island.peek ? ["skip_previous", island.playing ? "pause" : "play_arrow", "skip_next"] : []
 
-                    DankIcon {
+                    DW.DIcon {
                         required property string modelData
                         required property int index
                         // Faded when the player doesn't offer this button.
@@ -1145,7 +1486,7 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
 
-                    DankIcon {
+                    DW.DIcon {
                         anchors.verticalCenter: parent.verticalCenter
                         name: NotificationService.unreadCount > 0 ? "notifications_active" : "notifications"
                         size: 18
@@ -1181,8 +1522,72 @@ PanelWindow {
 
             readonly property bool irontomb: island.activity?.tone === "irontomb"
             readonly property color tone: irontomb ? "#FF6B5E" : (island.activity?.tone === "error" ? Theme.error : Theme.primary)
+            readonly property bool osd: !!island.activity?.osd
 
-            DankIcon {
+            transform: Translate {
+                id: glitchShift
+            }
+
+            // Khaslana's pop-ups arrive in three hard steps, no tween.
+            SequentialAnimation {
+                id: glitchIn
+                alwaysRunToEnd: true
+                PropertyAction {
+                    target: glitchShift
+                    property: "x"
+                    value: -6
+                }
+                PropertyAction {
+                    target: activityRow
+                    property: "opacity"
+                    value: 0.35
+                }
+                PauseAnimation {
+                    duration: Motion.base(45)
+                }
+                PropertyAction {
+                    target: glitchShift
+                    property: "x"
+                    value: 4
+                }
+                PropertyAction {
+                    target: activityRow
+                    property: "opacity"
+                    value: 0.8
+                }
+                PauseAnimation {
+                    duration: Motion.base(45)
+                }
+                PropertyAction {
+                    target: glitchShift
+                    property: "x"
+                    value: -2
+                }
+                PauseAnimation {
+                    duration: Motion.base(35)
+                }
+                PropertyAction {
+                    target: glitchShift
+                    property: "x"
+                    value: 0
+                }
+                PropertyAction {
+                    target: activityRow
+                    property: "opacity"
+                    value: 1
+                }
+            }
+
+            DW.DIcon {
+                visible: activityRow.osd && Form.phainon
+                anchors.verticalCenter: parent.verticalCenter
+                name: "wb_sunny"
+                size: 18
+                color: "#E9B92E"
+            }
+
+            DW.DIcon {
+                visible: !(activityRow.osd && Form.reaver)
                 anchors.verticalCenter: parent.verticalCenter
                 name: island.activity?.icon ?? "info"
                 size: 20
@@ -1256,93 +1661,12 @@ PanelWindow {
             }
         }
 
-        // Notification face: who, what, and the notification's own buttons
-        Row {
+        ToastFace {
             id: toastRow
             visible: !!island.toast
             anchors.horizontalCenter: parent.horizontalCenter
             height: win.strip
-            spacing: 10
-
-            DankIcon {
-                anchors.verticalCenter: parent.verticalCenter
-                name: "notifications_active"
-                size: 20
-                color: Theme.primary
-            }
-
-            // A line of lore in front of every notification: a decree, a recurrence notice,
-            // or a log line from the cycle.
-            StyledText {
-                visible: Form.active
-                anchors.verticalCenter: parent.verticalCenter
-                text: Form.phainon ? "DECREE" : (Form.khaslana ? "[ RECURRENCE NOTICE ]" : "// signal caught in cycle " + Form.cycleText)
-                font.family: Form.phainon ? Form.display(Theme.fontFamily) : Theme.monoFontFamily
-                font.pixelSize: Theme.fontSizeSmall
-                font.letterSpacing: Form.phainon ? 1.5 : 0
-                color: Form.reaver ? Theme.withAlpha(Theme.surfaceText, 0.45) : Theme.secondary
-            }
-
-            StyledText {
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, 200)
-                elide: Text.ElideRight
-                text: island.toast?.summary || island.toast?.appName || ""
-                font.pixelSize: Theme.fontSizeMedium
-                font.weight: Font.DemiBold
-                color: Theme.surfaceText
-            }
-
-            StyledText {
-                visible: !!island.toast?.body
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, 300)
-                elide: Text.ElideRight
-                maximumLineCount: 1
-                textFormat: Text.PlainText
-                text: (island.toast?.body ?? "").replace(/\s+/g, " ")
-                font.pixelSize: Theme.fontSizeMedium
-                color: Theme.withAlpha(Theme.surfaceText, 0.7)
-            }
-
-            Repeater {
-                model: island.toast ? island.toast.actions.slice(0, 2) : []
-
-                Item {
-                    id: toastAction
-                    required property var modelData
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: actionLabel.implicitWidth + 18
-                    height: 24
-
-                    CfSurface {
-                        anchors.fill: parent
-                        color: Theme.primary
-                        edgeWidth: 0
-                        radius: 12
-                        cut: 5
-                    }
-
-                    StyledText {
-                        id: actionLabel
-                        anchors.centerIn: parent
-                        text: Form.reaver ? toastAction.modelData.text.toLowerCase() : toastAction.modelData.text
-                        font.pixelSize: Theme.fontSizeSmall
-                        font.weight: Font.DemiBold
-                        color: Theme.primaryText
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            toastAction.modelData.invoke();
-                            if (island.toast)
-                                island.toast.popup = false;
-                        }
-                    }
-                }
-            }
+            note: island.toast
         }
     }
 
@@ -1369,7 +1693,7 @@ PanelWindow {
             height: win.strip - (Form.reaver ? 6 : 0)
             spacing: 11
 
-            DankIcon {
+            DW.DIcon {
                 visible: NetworkService.networkAvailable
                 anchors.verticalCenter: parent.verticalCenter
                 name: NetworkService.networkStatus === "ethernet" ? "lan" : NetworkService.wifiSignalIcon
@@ -1377,7 +1701,7 @@ PanelWindow {
                 color: NetworkService.networkStatus !== "disconnected" ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.5)
             }
 
-            DankIcon {
+            DW.DIcon {
                 visible: BluetoothService.available && BluetoothService.enabled
                 anchors.verticalCenter: parent.verticalCenter
                 name: BluetoothService.connected ? "bluetooth_connected" : "bluetooth"
@@ -1385,7 +1709,7 @@ PanelWindow {
                 color: BluetoothService.connected ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.6)
             }
 
-            DankIcon {
+            DW.DIcon {
                 anchors.verticalCenter: parent.verticalCenter
                 name: AudioService.sinkVolumeIconName
                 size: 19

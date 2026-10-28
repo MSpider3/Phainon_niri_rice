@@ -8,9 +8,11 @@ PluginComponent {
     id: root
 
     readonly property string themeId: "coreflame"
-    readonly property string themeFile: Quickshell.env("HOME") + "/.config/DankMaterialShell/themes/" + themeId + "/theme.json"
+    readonly property string themeFile: Quickshell.env("HOME") + "/.config/dms/themes/" + themeId + "/theme.json"
     readonly property var forms: ["phainon", "khaslana", "reaver"]
-    readonly property bool active: Theme.currentTheme === "custom" && SettingsData.customThemeFile === themeFile
+    // Any path ending in themes/coreflame/theme.json counts (older installs used ~/.config/DankMaterialShell), as in Form.qml.
+    readonly property bool ours: (SettingsData.customThemeFile || "").endsWith("/themes/" + themeId + "/theme.json")
+    readonly property bool active: Theme.currentTheme === "custom" && ours
     readonly property string form: SettingsData.getRegistryThemeVariant(themeId, forms[0])
 
     // Saved once, when Coreflame takes over from another theme, so `off` can go back.
@@ -32,7 +34,7 @@ PluginComponent {
         // Phainon is the light form; the other two are dark.
         const light = name === "phainon";
         const wasActive = active;
-        const sameFile = SettingsData.customThemeFile === themeFile;
+        const sameFile = ours;
         rememberPrevious();
         Theme.screenTransition();
 

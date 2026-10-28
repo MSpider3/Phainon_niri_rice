@@ -11,3 +11,6 @@ before.json
 *.bak
 *~
 .DS_Store
+
+# The user's original lock video; only the re-encoded cinematics/lock.mp4 ships
+/cinematics/phainon lock screen video.mp4

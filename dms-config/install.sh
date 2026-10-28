@@ -4,7 +4,7 @@
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-cfg="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/dms"
 
 mkdir -p "$cfg/themes/coreflame" "$cfg/plugins/coreflameForms"
 cp "$here"/theme/coreflame/* "$cfg/themes/coreflame/"

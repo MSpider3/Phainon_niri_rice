@@ -8,17 +8,17 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 NEST="${1:-${TMPDIR:-/tmp}/coreflame-nest}"
 COREFLAME_DIR="${COREFLAME_DIR:-$HOME/.config/quickshell/coreflame}"
-real_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell"
-real_state="${XDG_STATE_HOME:-$HOME/.local/state}/DankMaterialShell"
+real_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/dms"
+real_state="${XDG_STATE_HOME:-$HOME/.local/state}/dms"
 
 rm -rf "$NEST/run"
-mkdir -p "$NEST/config/DankMaterialShell/themes" "$NEST/config/DankMaterialShell/plugins" "$NEST/state/DankMaterialShell" "$NEST/cache" "$NEST/shots"
+mkdir -p "$NEST/config/dms/themes" "$NEST/config/dms/plugins" "$NEST/state/dms" "$NEST/cache" "$NEST/shots"
 
 # Seed the sandbox once from the real settings, with only the form-switch plugin enabled.
-if [ ! -f "$NEST/config/DankMaterialShell/settings.json" ]; then
-    cp "$real_cfg/settings.json" "$NEST/config/DankMaterialShell/"
-    cp "$real_state/session.json" "$NEST/state/DankMaterialShell/"
-    printf '{"coreflameForms":{"enabled":true}}\n' > "$NEST/config/DankMaterialShell/plugin_settings.json"
+if [ ! -f "$NEST/config/dms/settings.json" ]; then
+    cp "$real_cfg/settings.json" "$NEST/config/dms/"
+    cp "$real_state/session.json" "$NEST/state/dms/"
+    printf '{"coreflameForms":{"enabled":true}}\n' > "$NEST/config/dms/plugin_settings.json"
 fi
 # The sandbox always starts on the Coreflame theme, whatever the real session is using,
 # otherwise the shell would look like stock DMS.
@@ -26,22 +26,22 @@ FORM="${2:-khaslana}"
 python3 -I - "$NEST" "$HOME" "$FORM" <<'PY'
 import json, sys
 nest, home, form = sys.argv[1:4]
-p = nest + "/config/DankMaterialShell/settings.json"
+p = nest + "/config/dms/settings.json"
 s = json.load(open(p))
 s["currentThemeName"] = "custom"
 s["currentThemeCategory"] = "registry"
-s["customThemeFile"] = home + "/.config/DankMaterialShell/themes/coreflame/theme.json"
+s["customThemeFile"] = home + "/.config/dms/themes/coreflame/theme.json"
 v = s.get("registryThemeVariants") or {}
 v["coreflame"] = form
 s["registryThemeVariants"] = v
 json.dump(s, open(p, "w"), indent=2)
-p = nest + "/state/DankMaterialShell/session.json"
+p = nest + "/state/dms/session.json"
 s = json.load(open(p))
 s["isLightMode"] = form == "phainon"
 json.dump(s, open(p, "w"), indent=2)
 PY
-rsync -a --delete "$real_cfg/themes/coreflame" "$NEST/config/DankMaterialShell/themes/"
-rsync -a --delete "$real_cfg/plugins/coreflameForms" "$NEST/config/DankMaterialShell/plugins/"
+rsync -a --delete "$real_cfg/themes/coreflame" "$NEST/config/dms/themes/"
+rsync -a --delete "$real_cfg/plugins/coreflameForms" "$NEST/config/dms/plugins/"
 
 sed -e "s|@SHOTS@|$NEST/shots|" -e "s|@NEST@|$NEST|g" "$here/niri-test.kdl" > "$NEST/niri.kdl"
 # The sandbox must never count as the live shell (that is what binds wallpaper, GTK colours and

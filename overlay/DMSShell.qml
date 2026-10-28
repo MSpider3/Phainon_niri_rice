@@ -9,10 +9,10 @@ import qs.Modals.Clipboard
 import qs.Modals.Common
 import qs.Modals.Greeter
 import qs.Modals.Settings
-import qs.Modals.DankLauncherV2
+import qs.Modals.DLauncherV2
 import qs.Modules
 import qs.Modules.AppDrawer
-import qs.Modules.DankDash
+import qs.Modules.DDash
 import qs.Modules.ControlCenter
 import qs.Modules.Dock
 import qs.Modules.Lock
@@ -22,7 +22,7 @@ import qs.Widgets
 import qs.Modules.Notifications.Popup
 import qs.Modules.OSD
 import qs.Modules.ProcessList
-import qs.Modules.DankBar.Popouts
+import qs.Modules.DBar.Popouts
 import qs.Modules.WorkspaceOverlays
 import qs.Modules.Settings.DisplayConfig
 import qs.Services
@@ -37,28 +37,31 @@ Item {
         Chrome {}
     }
     readonly property var log: Log.scoped("DMSShell")
-    readonly property var _sessionsServiceRef: SessionsService
-    readonly property var _displayServiceRef: DisplayService
+    readonly property var _nightModeServiceRef: NightModeService
+    readonly property var _brightnessServiceRef: BrightnessService
+    readonly property var _refreshRateServiceRef: RefreshRateService
 
     property var core: null
 
     property bool osdSurfacesLoaded: false
     property int pendingOsdResumeReloads: 0
-    readonly property var dankIslandScreens: Quickshell.screens.filter(screen => SettingsData.dankIslandCoversScreen(screen))
     readonly property var notificationPopupScreens: {
         // Coreflame shows incoming notifications in the island.
         if (Form.chrome)
             return [];
         const screens = SettingsData.notificationFocusedMonitor ? Quickshell.screens : SettingsData.getFilteredScreens("notifications");
-        return root.withoutDankIslandScreens(screens);
-    }
-    // Coreflame shows volume and brightness in the island instead of the stock pop-ups.
-    readonly property var legacySystemLevelOsdScreens: Form.chrome ? [] : root.withoutDankIslandScreens(SettingsData.getFilteredScreens("osd"))
-
-    function withoutDankIslandScreens(screens) {
         if (!SettingsData.dankIslandEnabled)
             return screens;
-        return screens.filter(screen => root.dankIslandScreens.indexOf(screen) === -1);
+        return screens.filter(screen => !SettingsData.dankIslandHandlesNotifications(screen));
+    }
+    // Coreflame shows volume, brightness, mic mute, caps lock and touchpad in the island instead of the stock pop-ups.
+    readonly property var legacySystemLevelOsdScreens: {
+        if (Form.chrome)
+            return [];
+        const screens = SettingsData.getFilteredScreens("osd");
+        if (!SettingsData.dankIslandEnabled)
+            return screens;
+        return screens.filter(screen => !SettingsData.dankIslandHandlesSystemOsd(screen));
     }
 
     function recreateOsdSurfaces() {
@@ -68,6 +71,12 @@ Item {
     }
 
     DesktopWidgetLayer {}
+
+    DesktopWidgetEditor {}
+
+    DesktopContextMenu {
+        Component.onCompleted: PopoutService.desktopContextMenu = this
+    }
 
     Lock {
         id: lock
@@ -252,25 +261,26 @@ Item {
         dockEnabled = true;
         loginSoundTimer.start();
         osdStartupTimer.start();
+        if (SettingsData.controlCenterWidgets.some(widget => widget.id === "diskUsage" && widget.enabled !== false))
+            DgopService.initializeDiskMounts();
+        if (SettingsData.controlCenterWidgets.some(widget => widget.id === "user" && widget.enabled !== false && widget.uptime !== false))
+            DgopService.dgopAvailable;
 
         // These are dummy references just to trigger the singletons onCompleted to trigger
         PolkitService.polkitAvailable;
         DisplayConfigState.hasOutputBackend;
         PortalService.systemColorScheme;
-        IconThemeService.revision;
         DesktopService.isSystemd;
         TrashService.count;
         WallpaperCyclingService.cyclingActive;
         ThemeAutoService.active;
+        WellbeingService.tracking;
     }
 
     Loader {
         id: dockLoader
         active: root.dockEnabled
         asynchronous: false
-
-        property var currentPosition: SettingsData.dockPosition
-        property bool initialized: false
 
         sourceComponent: Dock {
             contextMenu: dockContextMenuLoader.item ? dockContextMenuLoader.item : null
@@ -280,22 +290,10 @@ Item {
         onLoaded: {
             if (item) {
                 dockContextMenuLoader.active = true;
-                if (SettingsData.dockShowTrash) {
+                if (SettingsData.dockConfigs.some(config => config.showTrash)) {
                     dockTrashContextMenuLoader.active = true;
                 }
             }
-        }
-
-        Component.onCompleted: {
-            initialized = true;
-        }
-
-        onCurrentPositionChanged: {
-            if (!initialized)
-                return;
-            const comp = sourceComponent;
-            sourceComponent = null;
-            sourceComponent = comp;
         }
     }
 
@@ -317,7 +315,7 @@ Item {
         }
 
         sourceComponent: Component {
-            DankDashPopout {
+            DDashPopout {
                 id: dankDashPopout
 
                 onPopoutClosed: PopoutService._scheduleUnload("dankDash")
@@ -358,8 +356,8 @@ Item {
 
     Connections {
         target: SettingsData
-        function onDockShowTrashChanged() {
-            if (SettingsData.dockShowTrash) {
+        function onDockConfigsChanged() {
+            if (SettingsData.dockConfigs.some(config => config.showTrash)) {
                 dockTrashContextMenuLoader.active = true;
             }
         }
@@ -383,12 +381,45 @@ Item {
                 return;
             emptyTrashConfirmLoader.loadedModal.showWithOptions({
                 title: I18n.tr("Empty Trash"),
-                message: I18n.tr("Permanently delete %1 item(s)? This cannot be undone.").arg(itemCount),
+                message: I18n.tr("Permanently delete %1 item(s)? This cannot be undone.", "empty trash confirmation message, %1 is a count").arg(itemCount),
                 confirmText: I18n.tr("Empty"),
                 cancelText: I18n.tr("Cancel"),
                 confirmColor: Theme.error,
                 onConfirm: () => TrashService.emptyTrash()
             });
+        }
+    }
+
+    LazyLoader {
+        id: uninstallAppConfirmLoader
+        active: false
+        readonly property ConfirmModal loadedModal: item as ConfirmModal
+
+        ConfirmModal {
+            id: uninstallAppConfirm
+        }
+    }
+
+    Connections {
+        target: AppSearchService
+        function onUninstallAppConfirmRequested(appId, appName, flatpakId) {
+            uninstallAppConfirmLoader.active = true;
+            const showDialog = () => {
+                if (uninstallAppConfirmLoader.loadedModal) {
+                    uninstallAppConfirmLoader.loadedModal.showWithOptions({
+                        title: I18n.tr("Uninstall %1?", "modal title for app uninstallation").arg(appName),
+                        message: I18n.tr("%1 will be removed from your system.", "modal confirmation text for uninstalling an app").arg(appName),
+                        confirmText: I18n.tr("Uninstall", "confirm button label to proceed with uninstallation"),
+                        cancelText: I18n.tr("Cancel"),
+                        confirmColor: Theme.error,
+                        onConfirm: () => AppSearchService.uninstallFlatpak(appId, appName, flatpakId)
+                    });
+                }
+            };
+            if (uninstallAppConfirmLoader.loadedModal)
+                showDialog();
+            else
+                Qt.callLater(showDialog);
         }
     }
 
@@ -730,7 +761,7 @@ Item {
             PopoutService.dankLauncherV2ModalLoader = dankLauncherV2ModalLoader;
         }
 
-        DankLauncherV2Modal {
+        DLauncherV2Modal {
             id: dankLauncherV2Modal
 
             Component.onCompleted: {
@@ -749,8 +780,10 @@ Item {
             PopoutService.spotlightBarModalLoader = spotlightBarModalLoader;
         }
 
-        DankLauncherV2ModalSpotlight {
+        DLauncherV2ModalHost {
             id: spotlightBarModal
+            connected: false
+            spotlight: true
 
             Component.onCompleted: {
                 PopoutService.spotlightBarModal = spotlightBarModal;
@@ -815,7 +848,7 @@ Item {
 
         AppPickerModal {
             id: filePickerModal
-            title: I18n.tr("Open with...")
+            title: I18n.tr("Open with", "app picker title, followed by a list of apps") + "…"
             viewMode: SettingsData.appPickerViewMode || "grid"
 
             onViewModeChanged: {
@@ -829,6 +862,11 @@ Item {
             onApplicationSelected: (app, filePath) => {
                 if (!app)
                     return;
+                const entry = SessionService.resolveDesktopId(app.appId);
+                if (entry) {
+                    SessionService.launchDesktopEntry(entry, false, [filePath]);
+                    return;
+                }
                 let cmd = app.exec || "";
                 const escapedPath = shellEscape(filePath);
                 const escapedUri = shellEscape("file://" + filePath);
@@ -867,7 +905,7 @@ Item {
         target: DMSService
         function onOpenUrlRequested(url) {
             if (url.startsWith("dms://theme/install/")) {
-                var themeId = url.replace("dms://theme/install/", "").split(/[?#]/)[0];
+                const themeId = url.replace("dms://theme/install/", "").split(/[?#]/)[0];
                 if (themeId) {
                     PopoutService.pendingThemeInstall = themeId;
                     PopoutService.openSettingsWithTab("theme");
@@ -875,10 +913,18 @@ Item {
                 return;
             }
             if (url.startsWith("dms://plugin/install/")) {
-                var pluginId = url.replace("dms://plugin/install/", "").split(/[?#]/)[0];
+                const pluginId = url.replace("dms://plugin/install/", "").split(/[?#]/)[0];
                 if (pluginId) {
                     PopoutService.pendingPluginInstall = pluginId;
                     PopoutService.openSettingsWithTab("plugins");
+                }
+                return;
+            }
+            if (url.startsWith("dms://wallpaper/install/")) {
+                const payload = url.replace("dms://wallpaper/install/", "").split(/[?#]/)[0];
+                if (payload) {
+                    PopoutService.pendingWallpaperInstall = payload;
+                    PopoutService.openSettingsWithTab("wallpaper");
                 }
                 return;
             }
@@ -922,7 +968,7 @@ Item {
         }
     }
 
-    DankColorPickerModal {
+    ColorPickerModal {
         id: colorPickerModal
 
         Component.onCompleted: {
@@ -934,8 +980,6 @@ Item {
         id: workspaceRenameModalLoader
 
         active: false
-
-        Component.onCompleted: PopoutService.workspaceRenameModalLoader = workspaceRenameModalLoader
 
         WorkspaceRenameModal {
             id: workspaceRenameModal
@@ -980,6 +1024,29 @@ Item {
     }
 
     LazyLoader {
+        id: systemUpdateModalLoader
+
+        active: false
+
+        Component.onCompleted: PopoutService.systemUpdateModalLoader = systemUpdateModalLoader
+
+        SystemUpdateModal {
+            id: systemUpdateModal
+            property bool wasShown: false
+
+            Component.onCompleted: PopoutService.systemUpdateModal = systemUpdateModal
+
+            onVisibleChanged: {
+                if (systemUpdateModal.visible) {
+                    wasShown = true;
+                } else if (wasShown) {
+                    PopoutService.unloadSystemUpdateModal();
+                }
+            }
+        }
+    }
+
+    LazyLoader {
         id: systemUpdateLoader
 
         active: false
@@ -1007,13 +1074,14 @@ Item {
         id: notepadSlideoutVariants
         model: SettingsData.getFilteredScreens("notepad")
 
-        delegate: DankSlideout {
+        delegate: DSlideout {
             id: notepadSlideout
             title: I18n.tr("Notepad")
             slideoutWidth: 480
             expandable: true
             expandedWidthValue: 960
             edgeGap: SettingsData.notepadEffectiveEdgeGap
+            frameSurfaceEnabled: true
             slideEdge: SettingsData.notepadSlideoutSide
             customTransparency: Theme.notepadTransparency
 
@@ -1097,11 +1165,7 @@ Item {
     }
 
     function _switchUserFromPowerMenu() {
-        switchUserModalLoader.active = true;
-        Qt.callLater(() => {
-            if (switchUserModalLoader.loadedModal)
-                switchUserModalLoader.loadedModal.showFromPowerMenu();
-        });
+        PopoutService.openSwitchUser();
     }
 
     LazyLoader {
@@ -1128,10 +1192,31 @@ Item {
     }
 
     LazyLoader {
+        id: durationPopoutLoader
+
+        active: false
+
+        Component.onCompleted: {
+            PopoutService.durationPopoutLoader = durationPopoutLoader;
+        }
+
+        DurationPopout {
+            id: durationPopout
+            onPopoutClosed: PopoutService.unloadDurationPopout()
+
+            Component.onCompleted: {
+                PopoutService.durationPopout = durationPopout;
+            }
+        }
+    }
+
+    LazyLoader {
         id: switchUserModalLoader
 
         active: false
         readonly property SwitchUserModal loadedModal: item as SwitchUserModal
+
+        Component.onCompleted: PopoutService.switchUserModalLoader = switchUserModalLoader
 
         SwitchUserModal {
             id: switchUserModal
@@ -1143,12 +1228,12 @@ Item {
 
         active: false
 
+        Component.onCompleted: PopoutService.keybindsModalLoader = hyprKeybindsModalLoader
+
         KeybindsModal {
             id: keybindsModal
 
-            Component.onCompleted: {
-                PopoutService.hyprKeybindsModal = keybindsModal;
-            }
+            Component.onCompleted: PopoutService.keybindsModal = keybindsModal
         }
     }
 
@@ -1171,24 +1256,21 @@ Item {
     }
 
     DMSShellIPC {
-        powerMenuModalLoader: powerMenuModalLoader
-        processListModalLoader: processListModalLoader
-        controlCenterLoader: controlCenterLoader
-        dankDashPopoutLoader: dankDashPopoutLoader
-        notepadSlideoutVariants: notepadSlideoutVariants
-        hyprKeybindsModalLoader: hyprKeybindsModalLoader
+        processListModalLoaderRef: processListModalLoader
+        controlCenterLoaderRef: controlCenterLoader
+        dankDashPopoutLoaderRef: dankDashPopoutLoader
+        notepadSlideoutVariantsRef: notepadSlideoutVariants
+        hyprKeybindsModalLoaderRef: hyprKeybindsModalLoader
         dankBarRepeater: root.core?.dankBarRepeater ?? null
         hyprlandOverviewLoader: root.core?.hyprlandOverviewLoader ?? null
-        workspaceRenameModalLoader: workspaceRenameModalLoader
-        windowRuleModalLoader: windowRuleModalLoader
+        workspaceRenameModalLoaderRef: workspaceRenameModalLoader
+        windowRuleModalLoaderRef: windowRuleModalLoader
     }
 
     Variants {
         model: SettingsData.getFilteredScreens("toast")
 
-        delegate: Toast {
-            visible: ToastService.toastVisible
-        }
+        delegate: Toast {}
     }
 
     Loader {
@@ -1199,59 +1281,72 @@ Item {
         sourceComponent: Component {
             Item {
                 Variants {
-                    model: root.legacySystemLevelOsdScreens
+                    model: SettingsData.osdVolumeEnabled ? root.legacySystemLevelOsdScreens : []
 
                     delegate: VolumeOSD {}
                 }
 
                 Variants {
                     // Coreflame: the island shows track changes and volume itself
-                    model: Form.chrome ? [] : SettingsData.getFilteredScreens("osd")
+                    model: !Form.chrome && SettingsData.osdMediaVolumeEnabled ? SettingsData.getFilteredScreens("osd") : []
 
                     delegate: MediaVolumeOSD {}
                 }
 
                 Variants {
                     // Coreflame: the island shows track changes and volume itself
-                    model: Form.chrome ? [] : SettingsData.getFilteredScreens("osd")
+                    model: !Form.chrome && SettingsData.osdMediaPlaybackEnabled ? SettingsData.getFilteredScreens("osd") : []
 
                     delegate: MediaPlaybackOSD {}
                 }
 
                 Variants {
-                    model: SettingsData.getFilteredScreens("osd")
+                    model: (SettingsData.osdMicMuteEnabled || SettingsData.osdMicVolumeEnabled) ? root.legacySystemLevelOsdScreens : []
 
                     delegate: MicVolumeOSD {}
                 }
 
                 Variants {
-                    model: root.legacySystemLevelOsdScreens
+                    model: SettingsData.osdBrightnessEnabled ? root.legacySystemLevelOsdScreens : []
 
                     delegate: BrightnessOSD {}
                 }
 
                 Variants {
-                    model: SettingsData.getFilteredScreens("osd")
+                    model: SettingsData.osdIdleInhibitorEnabled ? root.legacySystemLevelOsdScreens : []
 
                     delegate: IdleInhibitorOSD {}
                 }
 
                 Variants {
-                    model: SettingsData.osdPowerProfileEnabled ? SettingsData.getFilteredScreens("osd") : []
+                    model: SettingsData.osdPowerProfileEnabled ? root.legacySystemLevelOsdScreens : []
 
                     delegate: PowerProfileOSD {}
                 }
 
                 Variants {
-                    model: SettingsData.getFilteredScreens("osd")
+                    model: SettingsData.osdCapsLockEnabled ? root.legacySystemLevelOsdScreens : []
 
                     delegate: CapsLockOSD {}
                 }
 
                 Variants {
-                    model: SettingsData.getFilteredScreens("osd")
+                    model: (SettingsData.osdTouchpadEnabled && CompositorService.isNiri) ? root.legacySystemLevelOsdScreens : []
+
+                    delegate: TouchpadOSD {}
+                }
+
+                Variants {
+                    model: SettingsData.osdAudioOutputEnabled ? SettingsData.getFilteredScreens("osd") : []
 
                     delegate: AudioOutputOSD {}
+                }
+
+                Variants {
+                    // Coreflame: the island shows workspace switches itself
+                    model: !Form.chrome && SettingsData.osdWorkspaceEnabled ? SettingsData.getFilteredScreens("osd") : []
+
+                    delegate: WorkspaceOSD {}
                 }
             }
         }

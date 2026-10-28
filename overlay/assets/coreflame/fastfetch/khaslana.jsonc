@@ -1,4 +1,4 @@
-// Khaslana · Worldbearer — a recurrence notice: bracketed fields, molten gold, an ember-red scar.
+// Khaslana · Bearer of Chaos — a recurrence notice: bracketed fields, molten gold, an ember-red scar.
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
   "logo": {
@@ -22,7 +22,7 @@
   "modules": [
     "break",
     { "type": "custom", "format": "{#38;2;229;84;76}▚▞ {#1;38;2;212;177;74}[ RECURRENCE NOTICE ]{#} {#38;2;229;84;76}▞▚" },
-    { "type": "custom", "format": "{#1;38;2;241;233;201}KHASLANA{#}{#38;2;212;177;74} · WORLDBEARER · MUST BURN" },
+    { "type": "custom", "format": "{#1;38;2;241;233;201}KHASLANA{#}{#38;2;212;177;74} · BEARER OF CHAOS" },
     { "type": "custom", "format": "{#38;2;212;177;74}━━━━━━━━━━╸ {#38;2;229;84;76}╳{#38;2;212;177;74} ╺━━━━━━━━━━━━━━━━━━━━━━" },
     { "type": "title", "key": "[ BEARER ]", "format": "{user-name}@{host-name}" },
     { "type": "os", "key": "[ WORLD ]", "format": "{name} {version-id}" },

@@ -1,8 +1,8 @@
 import QtQuick
 import Quickshell
 import qs.Common
-import qs.Modules.DankBar
-import qs.Modules.DankIsland
+import qs.Modules.DBar
+import qs.Modules.DIsland
 import qs.Modules.Frame
 import qs.Modules.WorkspaceOverlays
 import qs.Services
@@ -24,7 +24,7 @@ Item {
     property string _barLayoutStateJson: {
         if (!barSurfacesLoaded)
             return "[]";
-        const configs = SettingsData.getBarKindConfigs();
+        const configs = SettingsData.barConfigs;
         const mapped = configs.map(c => ({
                     id: c.id,
                     position: c.position,
@@ -119,7 +119,7 @@ Item {
         property var hyprlandOverviewLoaderRef: hyprlandOverviewLoader
 
         // Horizontal bars must claim their exclusive zones first, so vertical bars wait for every enabled horizontal bar to load
-        readonly property int horizontalWanted: SettingsData.getBarKindConfigs().filter(c => (c.enabled ?? false) && c.position !== SettingsData.Position.Left && c.position !== SettingsData.Position.Right).length
+        readonly property int horizontalWanted: SettingsData.barConfigs.filter(c => (c.enabled ?? false) && c.position !== SettingsData.Position.Left && c.position !== SettingsData.Position.Right).length
         property int horizontalReady: 0
         onHorizontalWantedChanged: recountHorizontalReady()
 
@@ -142,7 +142,7 @@ Item {
             asynchronous: false
             onItemChanged: dankBarRepeater.recountHorizontalReady()
 
-            sourceComponent: DankBar {
+            sourceComponent: DBar {
                 barConfig: barLoader.barConfig
                 hyprlandOverviewLoader: dankBarRepeater.hyprlandOverviewLoaderRef
             }
@@ -150,9 +150,10 @@ Item {
     }
 
     Loader {
-        active: SettingsData.dankIslandEnabled
+        // Coreflame brings its own island; DMS's would sit on top of it.
+        active: SettingsData.dankIslandEnabled && !Form.chrome
         asynchronous: false
-        sourceComponent: DankIsland {
+        sourceComponent: DIsland {
             hyprlandOverviewLoader: root.hyprlandOverviewLoader
         }
     }
