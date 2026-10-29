@@ -789,22 +789,33 @@ PanelWindow {
                             }
                         }
 
+                        // Only as many apps as fully fit in the card; the rest are in the messages view.
                         Column {
+                            id: noteList
                             visible: overview.notes.length > 0
                             width: parent.width
+                            height: parent.height
+                            clip: true
                             spacing: 10
 
+                            readonly property real rowHeight: noteRows.itemAt(0)?.implicitHeight ?? 1
+                            readonly property int fits: Math.max(1, Math.floor((height + spacing) / (rowHeight + spacing)))
+
                             Repeater {
+                                id: noteRows
                                 model: overview.notes
 
                                 Column {
                                     required property var modelData
+                                    required property int index
+                                    visible: index < noteList.fits
                                     width: parent.width
                                     spacing: 1
 
                                     StyledText {
                                         width: parent.width
                                         elide: Text.ElideRight
+                                        wrapMode: Text.NoWrap
                                         text: dash.tx((modelData.appName || "") + (modelData.count > 1 ? "  ·  " + modelData.count : "") + "  ·  " + (modelData.latestNotification?.timeStr ?? ""))
                                         font.pixelSize: Theme.fontSizeSmall
                                         color: Form.reaver ? Theme.withAlpha(Theme.live, 0.9) : Theme.withAlpha(Theme.surfaceText, 0.55)
@@ -813,7 +824,9 @@ PanelWindow {
                                     StyledText {
                                         width: parent.width
                                         elide: Text.ElideRight
-                                        text: modelData.latestNotification?.summary ?? ""
+                                        wrapMode: Text.NoWrap
+                                        textFormat: Text.PlainText
+                                        text: (modelData.latestNotification?.summary ?? "").replace(/\s+/g, " ")
                                         font.pixelSize: Theme.fontSizeMedium
                                         font.weight: Font.DemiBold
                                         color: Theme.surfaceText
@@ -822,9 +835,9 @@ PanelWindow {
                                     StyledText {
                                         width: parent.width
                                         elide: Text.ElideRight
-                                        maximumLineCount: 1
+                                        wrapMode: Text.NoWrap
                                         textFormat: Text.PlainText
-                                        text: modelData.latestNotification?.body ?? ""
+                                        text: (modelData.latestNotification?.body ?? "").replace(/\s+/g, " ")
                                         font.pixelSize: Theme.fontSizeSmall
                                         color: Theme.withAlpha(Theme.surfaceText, 0.7)
                                     }
