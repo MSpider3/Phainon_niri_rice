@@ -446,10 +446,7 @@ PanelWindow {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (island.latest)
-                        island.latest.popup = false;
-                }
+                onClicked: Form.openNotification(island.latest)
             }
 
             ToastFace {
@@ -1142,7 +1139,7 @@ PanelWindow {
             cursorShape: Qt.PointingHandCursor
             onClicked: mouse => {
                 if (island.toast)
-                    island.toast.popup = false;
+                    Form.openNotification(island.toast);
                 else if (mouse.button === Qt.MiddleButton)
                     island.player?.togglePlaying();
                 else

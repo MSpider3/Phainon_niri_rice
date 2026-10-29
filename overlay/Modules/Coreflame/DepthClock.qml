@@ -81,9 +81,31 @@ PanelWindow {
     property bool settled: false
     property bool swapping: false
     Timer {
+        id: settle
         running: true
         interval: 1500
         onTriggered: root.settled = true
+    }
+
+    // DMS re-creates its wallpaper surface after the screen wakes (outputs reload) or the lock
+    // screen ends, which would put the wallpaper over this layer; map again once that is over.
+    function remap() {
+        settled = false;
+        settle.interval = 4000;
+        settle.restart();
+    }
+    Connections {
+        target: NiriService
+        function onOutputsChanged() {
+            root.remap();
+        }
+    }
+    Connections {
+        target: IdleService
+        function onIsShellLockedChanged() {
+            if (!IdleService.isShellLocked)
+                root.remap();
+        }
     }
 
     readonly property string wallpaperNow: SessionData.getMonitorWallpaper(targetScreen?.name ?? "")

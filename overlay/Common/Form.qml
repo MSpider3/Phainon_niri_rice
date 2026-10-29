@@ -55,6 +55,29 @@ Singleton {
         chromes = chromes.filter(c => c !== item);
     }
 
+    // Clicking a notification opens what it is about: its default action (as stock DMS popups do),
+    // else the app's open window, else the app itself. Then it is dismissed.
+    function openNotification(n) {
+        if (!n)
+            return;
+        const actions = n.actions ?? [];
+        const action = actions.find(a => a.identifier === "default") || actions[0];
+        if (action?.invoke) {
+            action.invoke();
+        } else {
+            const names = [n.desktopEntry, n.appName].filter(Boolean).map(s => s.toLowerCase());
+            const win = NiriService.windows.find(w => {
+                const id = (w.app_id ?? "").toLowerCase();
+                return id !== "" && names.some(name => id === name || id.endsWith("." + name) || name.endsWith("." + id));
+            });
+            if (win)
+                NiriService.focusWindow(win.id);
+            else
+                (DesktopEntries.byId(n.desktopEntry) ?? DesktopEntries.heuristicLookup(n.appName))?.execute();
+        }
+        NotificationService.dismissNotification(n);
+    }
+
     // App windows: round for Phainon, barely eased for Khaslana, square for the Flame Reaver.
     function windowRadius(base) {
         if (!active)

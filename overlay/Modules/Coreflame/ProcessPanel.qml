@@ -26,7 +26,7 @@ PanelWindow {
 
     readonly property var tabs: ["Processes", "Performance", "Disks", "System"]
     readonly property real panelWidth: Math.min(860, width - 48)
-    readonly property real fullHeight: Math.min(720, height - 48)
+    readonly property real fullHeight: Math.min(880, height - 48)
 
     function open() {
         if (NiriService.inOverview)

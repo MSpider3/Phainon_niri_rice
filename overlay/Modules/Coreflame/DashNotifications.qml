@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -161,6 +162,16 @@ Item {
                                 required property int index
                                 width: groupBody.width
                                 height: noteColumn.implicitHeight
+
+                                // Click anywhere on the message to open it (the action labels and × keep their own clicks).
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        Form.openNotification(note.modelData);
+                                        note.Window.window?.close?.();
+                                    }
+                                }
 
                                 Rectangle {
                                     visible: note.index > 0
