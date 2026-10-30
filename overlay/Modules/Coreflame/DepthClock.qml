@@ -25,12 +25,12 @@ PanelWindow {
             "phainon": {
                 "imageW": 5760,
                 "imageH": 3120,
-                "left": 0.61535,
-                "baseline": 0.70926,
+                "left": 0.56019,
+                "baseline": 0.64352,
                 "dateAbove": true,
-                "size": 0.18519,
+                "size": 0.22222,
                 "dateSize": 0.03704,
-                "arc": [0.70062, 0.43519, 0.94136, 0.43519]
+                "arc": [0.70062, 0.37037, 0.94136, 0.37037]
             },
             "khaslana": {
                 "imageW": 2048,
@@ -75,6 +75,8 @@ PanelWindow {
         }
     }
 
+    // Never cover DMS's wallpaper surface completely: niri stops sending frames to a fully hidden
+    // surface, Qt then treats it as unexposed and a wallpaper change freezes half-done.
     // It shares the background layer with the wallpaper, where the surface mapped last is on top:
     // so it maps a moment after start, and unmaps during a form swap (the wallpaper may be redrawn)
     // and in the overview, coming back above the wallpaper each time.
@@ -189,20 +191,6 @@ PanelWindow {
             NumberAnimation {
                 duration: Motion.base(300)
             }
-        }
-
-        // The whole wallpaper again, under everything: if DMS's own wallpaper surface is late or
-        // re-attached, this layer still shows the full picture, never a cut-out floating on nothing.
-        Image {
-            id: base
-            visible: root.depth && status === Image.Ready
-            x: root.shownX
-            y: root.shownY
-            width: root.shownW
-            height: root.shownH
-            source: wall.source
-            sourceSize: wall.sourceSize
-            asynchronous: true
         }
 
         // ── what stands behind the character ──
@@ -430,7 +418,7 @@ PanelWindow {
         }
 
         MultiEffect {
-            visible: base.visible && wall.status === Image.Ready && near.status === Image.Ready
+            visible: root.depth && wall.status === Image.Ready && near.status === Image.Ready
             x: root.shownX
             y: root.shownY
             width: root.shownW
