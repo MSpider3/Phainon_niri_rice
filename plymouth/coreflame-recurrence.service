@@ -1,0 +1,15 @@
+# Installed by "sudo sh plymouth/install.sh recurrence", which fills in @HOME@.
+[Unit]
+Description=Show the Eternal Recurrence cycle on the boot splash
+DefaultDependencies=no
+After=plymouth-start.service local-fs.target
+Before=plymouth-quit.service plymouth-quit-wait.service
+RequiresMountsFor=@HOME@
+ConditionPathExists=/run/plymouth/pid
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/coreflame-recurrence-count "@HOME@/.config/coreflame/boots"
+
+[Install]
+WantedBy=sysinit.target

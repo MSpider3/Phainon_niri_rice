@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import qs.Common
 import qs.Services
@@ -170,19 +171,26 @@ Item {
             }
         }
 
-        // The horizon, and the field below it
+        // The field, misting up into the sky with no hard horizon line
         Rectangle {
-            y: dawn.horizon
+            readonly property real rise: Math.round(dawn.height * 0.08)
+            y: dawn.horizon - rise
             width: parent.width
-            height: parent.height - dawn.horizon
-            color: Theme.withAlpha(Theme.surface, 0.55)
-        }
-
-        Rectangle {
-            y: dawn.horizon
-            width: parent.width
-            height: 2
-            color: Theme.withAlpha(dawn.gold, 0.85)
+            height: parent.height - y
+            gradient: Gradient {
+                GradientStop {
+                    position: 0
+                    color: Theme.withAlpha(Theme.surface, 0)
+                }
+                GradientStop {
+                    position: 0.55
+                    color: Theme.withAlpha(Theme.surface, 0.4)
+                }
+                GradientStop {
+                    position: 1
+                    color: Theme.withAlpha(Theme.surface, 0.6)
+                }
+            }
         }
 
         // Aedes Elysiae
@@ -206,7 +214,7 @@ Item {
 
                 Text {
                     text: root.time
-                    font.family: Form.display(Theme.fontFamily)
+                    font.family: Form.numerals
                     font.pixelSize: Math.round(dawn.height * 0.15)
                     font.weight: Font.DemiBold
                     color: dawn.lapis
@@ -268,14 +276,27 @@ Item {
             }
         }
 
-        Text {
+        Row {
             anchors.horizontalCenter: parent.horizontalCenter
             y: dawn.horizon - height - 10
-            text: "ETERNAL RECURRENCE  " + Form.cycleText
-            font.family: Theme.monoFontFamily
-            font.pixelSize: 12
-            font.letterSpacing: 3
-            color: Theme.withAlpha(dawn.lapis, 0.75)
+
+            Text {
+                id: recurrenceLabel
+                text: "ETERNAL RECURRENCE  "
+                font.family: Theme.monoFontFamily
+                font.pixelSize: 12
+                font.letterSpacing: 3
+                color: Theme.withAlpha(dawn.lapis, 0.75)
+            }
+
+            Text {
+                anchors.baseline: recurrenceLabel.baseline
+                text: Form.cycle
+                font.family: Form.numerals
+                font.pixelSize: 15
+                font.letterSpacing: 1
+                color: Theme.withAlpha(dawn.lapis, 0.75)
+            }
         }
     }
 
@@ -289,6 +310,22 @@ Item {
         readonly property color wound: Theme.error
         readonly property color ink: "#F5F6E6"
         readonly property real inset: Math.round(width * 0.065)
+
+        // The "Ignite That Primal Sun" mural behind everything, softened (it is only 1000 px wide).
+        // Game art, so it lives outside the repo; without the file the wallpaper shows as before.
+        Image {
+            anchors.fill: parent
+            visible: status === Image.Ready
+            source: Form.khaslana ? "file://" + Form.stateDir + "/cinematics/khaslana-mural.png" : ""
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            layer.enabled: visible
+            layer.effect: MultiEffect {
+                blurEnabled: true
+                blur: 0.35
+                blurMax: 32
+            }
+        }
 
         // Dark from the left, where the words stand; the wallpaper shows through on the right.
         Rectangle {
@@ -344,7 +381,7 @@ Item {
                     fontSizeMode: Text.HorizontalFit
                     minimumPixelSize: 40
                     text: root.time
-                    font.family: Form.display(Theme.fontFamily)
+                    font.family: Form.numerals
                     font.pixelSize: Math.round(bearer.height * 0.24)
                     font.weight: Font.Bold
                     color: bearer.ink
@@ -402,12 +439,30 @@ Item {
                 color: bearer.ink
             }
 
-            Text {
-                text: "CYCLE " + Form.cycleText + "  //  THE EMBERS REFUSE TO SLEEP"
-                font.family: Theme.monoFontFamily
-                font.pixelSize: 12
-                font.letterSpacing: 3
-                color: Theme.withAlpha(bearer.gold, 0.85)
+            Row {
+                Text {
+                    id: cycleLabel
+                    text: "CYCLE "
+                    font.family: Theme.monoFontFamily
+                    font.pixelSize: 12
+                    font.letterSpacing: 3
+                    color: Theme.withAlpha(bearer.gold, 0.85)
+                }
+
+                Text {
+                    anchors.baseline: cycleLabel.baseline
+                    text: Form.cycle
+                    font.family: Form.numerals
+                    font.pixelSize: 15
+                    font.letterSpacing: 1
+                    color: Theme.withAlpha(bearer.gold, 0.85)
+                }
+
+                Text {
+                    text: "  //  THE EMBERS REFUSE TO SLEEP"
+                    font: cycleLabel.font
+                    color: cycleLabel.color
+                }
             }
         }
 

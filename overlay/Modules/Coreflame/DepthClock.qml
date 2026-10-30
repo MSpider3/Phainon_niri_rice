@@ -35,18 +35,18 @@ PanelWindow {
             "khaslana": {
                 "imageW": 2048,
                 "imageH": 1146,
-                "left": 0.12177,
-                "baseline": 0.26389,
-                "size": 0.2037,
+                "left": 0.52072,
+                "baseline": 0.53704,
+                "dateAbove": true,
+                "size": 0.22222,
                 "dateSize": 0.03519,
-                "embers": [0.59844, 0.55556]
+                "embers": [0.59844, 0.64]
             },
             "reaver": {
                 "imageW": 4096,
                 "imageH": 2171,
-                "left": 0.07794,
-                "baseline": 0.43426,
-                "dateRight": true,
+                "left": 0.07793,
+                "baseline": 0.23148,
                 "size": 0.22222,
                 "dateSize": 0.03519,
                 "ledger": [0.93188, 0.55556]
@@ -55,7 +55,10 @@ PanelWindow {
 
     // Not bound to Form.form: the swap waits until the wallpaper transition is over.
     property string shownForm: ""
-    Component.onCompleted: shownForm = Form.form
+    Component.onCompleted: {
+        shownForm = Form.form;
+        overviewGone = NiriService.inOverview;
+    }
     readonly property var spec: specs[shownForm] ?? null
     Timer {
         id: swapDelay
@@ -63,14 +66,12 @@ PanelWindow {
         onTriggered: {
             root.shownForm = Form.form;
             root.swapping = false;
-            fade.opacity = 1;
         }
     }
     Connections {
         target: Form
         function onFormChanged() {
             root.swapping = true;
-            fade.opacity = 0;
             swapDelay.restart();
         }
     }
@@ -103,10 +104,42 @@ PanelWindow {
         }
     }
     Connections {
+        target: Form
+        function onWallpaperMapped(screenName) {
+            if (screenName !== (root.targetScreen?.name ?? ""))
+                return;
+            root.settled = false;
+            settle.interval = 300;
+            settle.restart();
+        }
+    }
+    Connections {
         target: IdleService
         function onIsShellLockedChanged() {
             if (!IdleService.isShellLocked)
                 root.remap();
+        }
+    }
+
+    // The overview: unmap at once. The backdrop does not zoom with the workspaces, so a fade let the
+    // full-size clock show around the shrinking windows. On the way back, wait for niri's zoom to
+    // finish, map again (on top of the wallpaper) while still transparent, then fade in. Popping back
+    // in mid-zoom showed the clock for a frame or two before its cutout layer was drawn.
+    property bool overviewGone: false
+    Timer {
+        id: overviewBack
+        interval: Motion.still ? 1 : 550
+        onTriggered: root.overviewGone = false
+    }
+    Connections {
+        target: NiriService
+        function onInOverviewChanged() {
+            if (NiriService.inOverview) {
+                overviewBack.stop();
+                root.overviewGone = true;
+            } else {
+                overviewBack.restart();
+            }
         }
     }
 
@@ -166,7 +199,7 @@ PanelWindow {
     }
 
     screen: targetScreen
-    visible: settled && !swapping && Form.active && !!spec && !NiriService.inOverview
+    visible: settled && !swapping && Form.active && !!spec && !overviewGone && (Form.wallpaperUp[targetScreen?.name ?? ""] ?? false)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     // Clicks go through to the desktop.
@@ -187,9 +220,10 @@ PanelWindow {
     Item {
         id: fade
         anchors.fill: parent
+        opacity: !root.settled || root.swapping || root.overviewGone || NiriService.inOverview ? 0 : 1
         Behavior on opacity {
             NumberAnimation {
-                duration: Motion.base(300)
+                duration: Motion.base(180)
             }
         }
 
@@ -205,7 +239,7 @@ PanelWindow {
                 y: root.toY(root.spec?.baseline ?? 0) - baselineOffset
                 text: root.timeText
                 color: root.ink
-                font.family: root.shownForm === "khaslana" ? "Chakra Petch" : (root.shownForm === "reaver" ? "Cormorant Garamond" : "Marcellus")
+                font.family: Form.numerals
                 font.italic: root.shownForm === "reaver"
                 font.weight: root.shownForm === "khaslana" ? Font.Bold : (root.shownForm === "reaver" ? Font.Medium : Font.Normal)
                 font.pixelSize: root.px(root.spec?.size ?? 0.2)
@@ -221,7 +255,7 @@ PanelWindow {
                 y: root.spec?.dateAbove ? time.y + time.baselineOffset - time.font.pixelSize * 0.78 - height : time.y + time.baselineOffset + font.pixelSize * 0.45
                 text: root.dateText
                 color: root.ink
-                font.family: root.shownForm === "khaslana" ? "Cinzel" : (root.shownForm === "reaver" ? "Cormorant Garamond" : "Marcellus")
+                font.family: Form.numerals
                 font.italic: root.shownForm === "reaver"
                 font.pixelSize: root.px(root.spec?.dateSize ?? 0.04)
                 font.letterSpacing: root.shownForm === "khaslana" ? 2 : 0.5
@@ -314,7 +348,7 @@ PanelWindow {
             y: arc.horizon + root.px(0.012)
             text: (arc.day ? "" : "rises ") + (WeatherService.weather.sunrise || "--")
             color: root.ink
-            font.family: "Marcellus"
+            font.family: Form.numerals
             font.pixelSize: root.px(0.024)
         }
 
@@ -324,7 +358,7 @@ PanelWindow {
             y: arc.horizon + root.px(0.012)
             text: WeatherService.weather.sunset || "--"
             color: root.ink
-            font.family: "Marcellus"
+            font.family: Form.numerals
             font.pixelSize: root.px(0.024)
         }
 
@@ -353,7 +387,7 @@ PanelWindow {
                 leftPadding: root.px(0.006)
                 text: "FLAME-CHASE · " + Coreflames.count + " / 12"
                 color: root.ink
-                font.family: "Cinzel"
+                font.family: Form.numerals
                 font.pixelSize: root.px(0.016)
                 font.letterSpacing: 1.5
                 opacity: 0.85

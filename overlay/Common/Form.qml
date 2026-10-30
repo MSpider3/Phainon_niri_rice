@@ -24,14 +24,12 @@ Singleton {
     readonly property bool pillRound: phainon
     readonly property real edgeWidth: (phainon || khaslana) ? 1 : 0
     readonly property real edgeOpacity: khaslana ? 1.0 : 0.6
-    readonly property bool mono: reaver
 
-    // Typefaces. Display is for titles, numerals and small caps labels; body replaces the UI font.
-    // Phainon: Marcellus, a Roman inscription face. Khaslana: Cinzel over Chakra Petch, whose
-    // chamfered letters echo his cut plates. The Flame Reaver stays in monospace.
-    readonly property string displayFont: phainon ? "Marcellus" : (khaslana ? "Cinzel" : "")
-    readonly property string bodyFont: khaslana ? "Chakra Petch" : ""
-    readonly property string quoteFont: (phainon || khaslana) ? "Cormorant Garamond" : ""
+    // Typefaces: every form uses Coreflame Display (fonts/, built by tools/coreflame_font.py), the
+    // face drawn from the recurrence counter, for titles, body, quotes and the monospace labels.
+    readonly property string displayFont: active ? numerals : ""
+    readonly property string bodyFont: active ? numerals : ""
+    readonly property string quoteFont: active ? numerals : ""
 
     function display(fallback) {
         return displayFont !== "" ? displayFont : fallback;
@@ -96,6 +94,9 @@ Singleton {
     property int boots: 0
     readonly property int cycle: 33550336 + boots
     readonly property string cycleText: cycle.toLocaleString(Qt.locale("en_US"), "f", 0)
+    // Amphoreus-style numerals and the matching letters (fonts/CoreflameDisplay-*.ttf, built by
+    // tools/coreflame_font.py).
+    readonly property string numerals: "Coreflame Display"
 
     readonly property string epithet: phainon ? "The Deliverer" : (khaslana ? "Bearer of Chaos" : (reaver ? "of the Deepest Dark" : ""))
     // Lock-screen quotes: game lines, one per boot from each form's pool.
@@ -141,6 +142,20 @@ Singleton {
     property bool openingPlayed: false
     // Bumped by any lock surface on key or pointer input, so the lock video stops on every screen.
     property int lockInput: 0
+
+    // DMS's wallpaper surface on this screen was mapped again (first load, or its watchdog's re-attach).
+    signal wallpaperMapped(string screenName)
+    // Screen name -> whether DMS's wallpaper surface is showing there. The depth clock waits for it,
+    // so its cut-out never floats on the bare backdrop while the wallpaper loads or re-attaches.
+    property var wallpaperUp: ({})
+
+    function setWallpaperUp(screenName, up) {
+        const next = Object.assign({}, wallpaperUp);
+        next[screenName] = up;
+        wallpaperUp = next;
+        if (up)
+            wallpaperMapped(screenName);
+    }
 
     // The boot check and the first chrome can finish in either order; whichever is last starts it.
     // Waits until the screens have stopped changing: at a real boot the outputs are still being set

@@ -93,7 +93,7 @@ cd Phainon_niri_rice
 sh install.sh
 ```
 
-That copies the fonts, the three wallpapers (into `~/Pictures/Phainon`), the theme and a tiny form-switch plugin, then restarts DMS with the new look. Your bar will blink for a few seconds.
+That copies the fonts, the three wallpapers (into `~/Pictures/Phainon`), the cinematics and art, the theme and a tiny form-switch plugin, then restarts DMS with the new look. After a `git pull`, run `sh install.sh update`. Your bar will blink for a few seconds.
 
 Want the matching icons and folders too? Run it like this instead (downloads about 185 MB of [Gruvbox Plus](https://github.com/SylEleuth/gruvbox-plus-icon-pack) icons):
 
@@ -125,7 +125,7 @@ Stock DMS comes back with the theme, wallpaper cycling and icons you had before.
 
 - **Wallpapers:** replace the three pictures in `~/Pictures/Phainon` (keep the file names), or change the names in `overlay/Common/Form.qml`. The desktop clock's depth only fits the shipped pictures; with your own, the clock shows without the character in front.
 - **Colours:** everything comes from `dms-config/theme/coreflame/theme.json`.
-- **The interface:** all custom pieces live in `overlay/`. Edit, run `sh build.sh`, and the shell picks it up.
+- **The interface:** all custom pieces live in `overlay/`. Edit, run `sh install.sh build`, and the shell picks it up.
 - **Try changes safely:** `sh dev/run-nested.sh ~/.cache/cfn khaslana` opens a sandboxed copy in its own window, so you can break things without touching your real session.
 
 A heads-up: while a form is active, DMS wallpaper cycling is switched off so the form's wallpaper stays put. It comes back when you leave.

@@ -347,18 +347,30 @@ PanelWindow {
             }
         }
 
-        StyledText {
+        Row {
             visible: dash.view === ""
             anchors.right: parent.right
             // Reaver's mask slats sit in the last 58 px of the edge.
             anchors.rightMargin: Form.reaver ? 70 : 22
             height: dash.strip
-            verticalAlignment: Text.AlignVCenter
             opacity: dash.reveal
-            text: dash.tx("Recurrence ") + Form.cycleText
-            font.family: Theme.monoFontFamily
-            font.pixelSize: Theme.fontSizeSmall
-            color: Theme.withAlpha(Theme.surfaceText, 0.45)
+
+            StyledText {
+                id: recurrenceLabel
+                anchors.verticalCenter: parent.verticalCenter
+                text: dash.tx("Recurrence ")
+                font.family: Theme.monoFontFamily
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.withAlpha(Theme.surfaceText, 0.45)
+            }
+
+            StyledText {
+                anchors.baseline: recurrenceLabel.baseline
+                text: Form.cycle
+                font.family: Form.numerals
+                font.pixelSize: Theme.fontSizeSmall + 3
+                color: recurrenceLabel.color
+            }
         }
 
         Loader {
@@ -436,7 +448,7 @@ PanelWindow {
 
                                     StyledText {
                                         text: (clock.date?.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm AP") ?? "").replace(/\s*[AaPp]\.?[Mm]\.?$/, "")
-                                        font.family: Form.reaver ? Theme.monoFontFamily : Form.display(Theme.fontFamily)
+                                        font.family: Form.numerals
                                         font.pixelSize: 34
                                         font.weight: Font.Bold
                                         color: Theme.primary

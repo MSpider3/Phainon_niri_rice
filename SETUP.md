@@ -25,12 +25,12 @@ cd Phainon_niri_rice
 sh install.sh --icons
 ```
 
-Leave out `--icons` if you don't want the icon, folder, cursor and GTK theme packs (about 185 MB download).
+Leave out `--icons` if you don't want the icon, folder, cursor and GTK theme packs (about 185 MB download). Add `--system-font` to make Coreflame Display the font of your other apps too. `sh install.sh --help` lists everything.
 
 `install.sh` does all of this, in order:
 
-1. Copies the fonts to `~/.local/share/fonts/coreflame/`.
-2. Copies the three wallpapers to `~/Pictures/Phainon/` and the opening and closing cinematics and the lock-screen video to `~/.config/coreflame/cinematics/` (it never overwrites files already there).
+1. Copies the fonts to `~/.local/share/fonts/coreflame/`. These include Coreflame Display, the shell's clock and counter font (rebuild it with `python3 tools/coreflame_font.py`). With `--system-font` it also becomes your default system font (`fonts/60-coreflame-display.conf` goes into `~/.config/fontconfig/conf.d/`, and the GTK font is set to it). To use it only for numbers instead, copy `fonts/60-coreflame-numerals.conf` there by hand. Terminals and code keep their own font. To undo, delete the file and set the GTK font back (`gsettings set org.gnome.desktop.interface font-name '<your font> 11'`).
+2. Copies the three wallpapers to `~/Pictures/Phainon/` and the opening and closing cinematics, the lock-screen video and two pieces of art (Phainon's tarot card for the power menu, the Khaslana mural for the lock screen) to `~/.config/coreflame/cinematics/`. It never overwrites files already there.
 3. Copies the Coreflame theme and the small form-switch plugin into `~/.config/dms/`.
 4. With `--icons`, runs `tools/icons.sh`:
    - the Gruvbox Plus icons, plus three folder sets tinted per form;
@@ -139,8 +139,11 @@ GTK, kitty and niri are left as they are: the steps above already cover them.
 
 ```sh
 sudo sh plymouth/install.sh khaslana     # or phainon / reaver
+sudo sh plymouth/install.sh recurrence   # the Eternal Recurrence cinematic
 sudo sh plymouth/install.sh revert       # back to your previous splash
 ```
+
+`recurrence` plays `cinematics/boot.mp4` while the machine boots. At its end it shows this boot's cycle number (the same one the shell counts) with "Eternal Recurrence / Booting into the Simulation". A small service, `coreflame-recurrence.service`, sends the number once your disk is mounted; if it's late, the two lines still show. There's no sound, and shutdown stays black. It needs ffmpeg with H.264 (on Fedora, ffmpeg from RPM Fusion), and adds about 30 MB to the initramfs. To use your own clip: `sudo sh plymouth/install.sh recurrence /path/to/video.mp4`. The number's place and timing are set at the top of `plymouth/coreflame-recurrence/coreflame-recurrence.script`, and its digits and lines are drawn by `python3 tools/recurrence_splash.py`.
 
 **Login screen (dms-greeter):** nothing to install. DMS's login screen reads your live DMS settings, so after you log out it shows the form you were using, in that form's colours and wallpaper. (If your wallpaper or fonts live somewhere the login screen can't read, it falls back to a plain colour or a default font.)
 
@@ -148,16 +151,15 @@ sudo sh plymouth/install.sh revert       # back to your previous splash
 
 ```sh
 git pull
-sh build.sh
-systemctl --user restart dms.service
+sh install.sh update
 ```
 
-`build.sh` assembles the shell from `vendor/` (the stock DMS 2.0 interface) plus `overlay/` (everything the rice changes), straight into the live folder.
+`update` refreshes the fonts, theme and plugin, assembles the shell from `vendor/` (the stock DMS 2.0 interface) plus `overlay/` (everything the rice changes) into the live folder, and restarts DMS. `sh install.sh build` does only the assembling.
 
 If you tinker with `overlay/`, try changes in a sandboxed copy first; it opens in its own window and doesn't touch your session:
 
 ```sh
-sh build.sh ~/.cache/coreflame-test
+sh install.sh build ~/.cache/coreflame-test
 COREFLAME_DIR=~/.cache/coreflame-test sh dev/run-nested.sh ~/.cache/cfn khaslana
 ```
 
@@ -189,9 +191,8 @@ Any of these returns you to stock DMS with the theme, wallpaper cycling, icons, 
 
 | Path | What it is |
 |---|---|
-| `install.sh` | one-step install (start here) |
+| `install.sh` | install (start here), `update`, and `build` (assemble the shell from `vendor/` + `overlay/`) |
 | `coreflame.sh` | `on`, `off`, `status`, `apps`, `selftest` |
-| `build.sh` | builds the shell from `vendor/` + `overlay/` |
 | `overlay/` | everything the rice adds or changes in the DMS interface |
 | `vendor/dms-2.0.0/` | untouched stock DMS interface it builds on |
 | `dms-config/` | the Coreflame theme and form-switch plugin |

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Coreflame Recurrence
+Description=The Eternal Recurrence cinematic as the boot splash, with this boot's cycle number
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/coreflame-recurrence
+ScriptFile=/usr/share/plymouth/themes/coreflame-recurrence/coreflame-recurrence.script

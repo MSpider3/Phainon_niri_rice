@@ -1,0 +1,10 @@
+#!/bin/sh
+# Sends this boot's Eternal Recurrence cycle to the boot splash. Same count the shell shows:
+# the number in the user's boots file, plus one when this boot isn't counted there yet.
+#   coreflame-recurrence-count /home/<user>/.config/coreflame/boots
+f="$1"
+[ -r "$f" ] || exit 0
+read -r n last < "$f" || exit 0
+case "$n" in '' | *[!0-9]*) exit 0 ;; esac
+[ "$(cat /proc/sys/kernel/random/boot_id)" != "$last" ] && n=$((n + 1))
+exec plymouth display-message --text="cycle:$((33550336 + n))."

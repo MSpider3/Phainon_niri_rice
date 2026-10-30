@@ -126,7 +126,7 @@ disarm)
     disarm
     ;;
 on)
-    sh "$here/build.sh"
+    sh "$here/install.sh" build
     arm "$shell_dir"
     apps || echo "Skipped the app colours; run \"coreflame.sh apps\" later." >&2
     if systemctl --user restart dms.service; then

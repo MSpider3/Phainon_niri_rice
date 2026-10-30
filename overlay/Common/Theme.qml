@@ -1197,8 +1197,6 @@ Singleton {
     property string fontFamily: {
         if (typeof SettingsData === "undefined")
             return DCommon.Fonts.sans;
-        if (Form.mono)
-            return resolvedMonoFontFamily(SettingsData.monoFontFamily);
         if (Form.bodyFont !== "")
             return Form.bodyFont;
         if (SettingsData.isGreeterMode && SettingsData.lockScreenFontFamily !== "")
@@ -1206,7 +1204,8 @@ Singleton {
         return resolvedFontFamily(SettingsData.fontFamily);
     }
 
-    property string monoFontFamily: typeof SettingsData !== "undefined" ? resolvedMonoFontFamily(SettingsData.monoFontFamily) : DCommon.Fonts.mono
+    // Coreflame: the forms' monospace labels use Coreflame Display too.
+    property string monoFontFamily: Form.active ? Form.numerals : (typeof SettingsData !== "undefined" ? resolvedMonoFontFamily(SettingsData.monoFontFamily) : DCommon.Fonts.mono)
     property string displayFontFamily: typeof SettingsData !== "undefined" ? resolvedDisplayFontFamily(SettingsData.displayFontFamily) : DCommon.Fonts.display
 
     readonly property var fontChoices: [

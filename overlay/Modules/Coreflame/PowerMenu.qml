@@ -189,7 +189,21 @@ PanelWindow {
         Keys.onReturnPressed: menu.choose(menu.selected)
         Keys.onEnterPressed: menu.choose(menu.selected)
 
+        // Phainon's tarot card beside the choices (installed from cinematics/); no file, no card.
+        Image {
+            visible: Form.phainon && status === Image.Ready
+            anchors.verticalCenter: choiceColumn.verticalCenter
+            anchors.right: choiceColumn.left
+            anchors.rightMargin: 72
+            height: Math.round(Math.min(440, parent.height * 0.46))
+            fillMode: Image.PreserveAspectFit
+            source: Form.phainon ? "file://" + Form.stateDir + "/cinematics/phainon-card.png" : ""
+            asynchronous: true
+            mipmap: true
+        }
+
         Column {
+            id: choiceColumn
             anchors.centerIn: parent
             spacing: 26
 
@@ -201,12 +215,25 @@ PanelWindow {
                 color: Theme.primary
             }
 
-            StyledText {
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: (Form.reaver ? "death · end of cycle " : "Death · End of cycle ") + Form.cycleText
-                font.pixelSize: Theme.fontSizeLarge
-                font.letterSpacing: 2
-                color: Theme.withAlpha(Theme.surfaceText, 0.7)
+
+                StyledText {
+                    id: endLabel
+                    text: Form.reaver ? "death · end of cycle " : "Death · End of cycle "
+                    font.pixelSize: Theme.fontSizeLarge
+                    font.letterSpacing: 2
+                    color: Theme.withAlpha(Theme.surfaceText, 0.7)
+                }
+
+                StyledText {
+                    anchors.baseline: endLabel.baseline
+                    text: Form.cycle
+                    font.family: Form.numerals
+                    font.pixelSize: Theme.fontSizeLarge + 3
+                    font.letterSpacing: 1
+                    color: endLabel.color
+                }
             }
 
             Row {

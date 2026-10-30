@@ -1,0 +1,126 @@
+// Coreflame · Eternal Recurrence: the boot cinematic (frames f1.png, f2.png, ... made from
+// cinematics/boot.mp4 by install.sh) with this boot's cycle number and two lines at its end.
+// The number arrives as the message "cycle:<n>." from coreflame-recurrence.service once the
+// disk is mounted; without it the lines still show. Boot only: shutdown stays black.
+FPS = 15;
+// Layout, as in the shell's cinematic sidecar (video-relative; the frames are already zoomed).
+ZOOM = 1.148698;
+NX = 0.5;
+NY = 0.5889;
+PITCH = 0.0413;
+SHOW = 6.9;
+SETTLE = 7.47;
+FADE = 8.87;
+END = 9.07;
+
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+screen_w = Window.GetWidth();
+screen_h = Window.GetHeight();
+booting = Plymouth.GetMode() == "boot";
+
+// Fill the screen like the video does: crop, never letterbox.
+first = Image("f1.png");
+k = Math.Max(screen_w / first.GetWidth(), screen_h / first.GetHeight());
+frame_w = first.GetWidth() * k;
+frame_h = first.GetHeight() * k;
+frame_x = (screen_w - frame_w) / 2;
+frame_y = (screen_h - frame_h) / 2;
+video = Sprite();
+video.SetPosition(frame_x, frame_y, 0);
+if (booting) video.SetImage(first.Scale(frame_w, frame_h));
+
+// The number and lines grow from here, like the shell's overlay.
+origin_x = frame_x + ((NX - 0.5) * ZOOM + 0.5) * frame_w;
+origin_y = frame_y + ((NY - 0.5) * ZOOM + 0.5) * frame_h;
+pitch = PITCH * ZOOM * frame_h;
+ref = frame_h / 1080;  // digits and caption are drawn for a 1080p frame
+
+digit_chars = String("0123456789");
+for (i = 0; i < 10; i++) {
+    c = digit_chars.CharAt(i);
+    d = Image("d" + c + ".png");
+    digit_image[c] = d.Scale(d.GetWidth() * ref, d.GetHeight() * ref);
+}
+caption_base = Image("caption.png");
+caption_full = caption_base.Scale(frame_w, frame_h);
+caption = Sprite();
+count = 0;
+
+fun message_callback(text) {
+    t = String(text);
+    prefix = String("cycle:");
+    for (i = 0; i < 6; i++)
+        if (t.CharAt(i) != prefix.CharAt(i)) return;
+    n = 0;
+    // Digits up to the closing ".", so nothing is read past the end of the text.
+    for (i = 6; i < 20; i++) {
+        c = t.CharAt(i);
+        if (!digit_image[c]) break;
+        global.number[n] = c;
+        if (!global.digit_sprite[n]) global.digit_sprite[n] = Sprite();
+        n++;
+    }
+    global.count = n;
+}
+Plymouth.SetDisplayMessageFunction(message_callback);
+
+fun place(g, a) {
+    for (j = 0; j < count; j++) {
+        img = digit_image[number[j]];
+        if (g < 1) img = img.Scale(img.GetWidth() * g, img.GetHeight() * g);
+        x = origin_x + (j - (count - 1) / 2) * pitch * g;
+        digit_sprite[j].SetImage(img);
+        digit_sprite[j].SetPosition(x - img.GetWidth() / 2, origin_y - img.GetHeight() / 2, 2);
+        digit_sprite[j].SetOpacity(a);
+    }
+    if (g < 1) caption.SetImage(caption_base.Scale(frame_w * g, frame_h * g));
+    else caption.SetImage(caption_full);
+    caption.SetPosition(origin_x + (frame_x - origin_x) * g, origin_y + (frame_y - origin_y) * g, 2);
+    caption.SetOpacity(a);
+}
+
+tick = 0;
+shown = 1;
+ended = 0;
+fun refresh_callback() {
+    if (!booting) return;
+    t = tick / FPS;
+    f = tick + 1;
+    if (!ended && f != shown) {
+        img = Image("f" + f + ".png");
+        if (img) {
+            video.SetImage(img.Scale(frame_w, frame_h));
+            global.shown = f;
+        } else {
+            global.ended = 1;  // past the last frame: hold it until the login screen
+        }
+    }
+    if (t >= SHOW && t < END) {
+        s = Math.Clamp((t - SHOW) / (SETTLE - SHOW), 0, 1);
+        r = 1 - s;
+        a = Math.Clamp(Math.Min((t - SHOW) / 0.25, (END - t) / (END - FADE)), 0, 1);
+        place(0.8 + 0.2 * (1 - r * r * r), a);
+    } else if (t >= END) {
+        place(1, 0);
+    }
+    global.tick = tick + 1;
+}
+Plymouth.SetRefreshRate(FPS);
+Plymouth.SetRefreshFunction(refresh_callback);
+
+// Disk password, for encrypted systems
+fun display_password_callback(prompt, bullets) {
+    text = prompt + "  ";
+    for (i = 0; i < bullets; i++) text += "•";
+    prompt_image = Image.Text(text, 0.906, 0.824, 0.686, 1, "Sans 12");
+    prompt_sprite = Sprite(prompt_image);
+    prompt_sprite.SetPosition(screen_w / 2 - prompt_image.GetWidth() / 2, screen_h * 0.86, 10);
+    global.prompt_sprite = prompt_sprite;
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+fun display_normal_callback() {
+    global.prompt_sprite = NULL;
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);

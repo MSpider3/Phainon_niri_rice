@@ -1226,7 +1226,7 @@ PanelWindow {
                         return "";
                     return d.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm AP");
                 }
-                font.family: Form.display(Theme.fontFamily)
+                font.family: Form.numerals
                 font.pixelSize: Theme.fontSizeLarge
                 font.weight: Font.Bold
                 color: Theme.surfaceText
