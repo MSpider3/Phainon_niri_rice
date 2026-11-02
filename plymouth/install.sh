@@ -15,6 +15,8 @@ themes=/usr/share/plymouth/themes
 saved=/var/lib/coreflame-plymouth-before
 unit=/etc/systemd/system/coreflame-recurrence.service
 counter=/usr/local/libexec/coreflame-recurrence-count
+# The shutdown and restart screens get the number too, sent as each one starts.
+dropins="/etc/systemd/system/plymouth-poweroff.service.d/coreflame-recurrence.conf /etc/systemd/system/plymouth-reboot.service.d/coreflame-recurrence.conf"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Run with sudo." >&2
@@ -25,7 +27,8 @@ fi
 drop_counter() {
     if [ -f "$unit" ]; then
         systemctl disable coreflame-recurrence.service 2> /dev/null || true
-        rm -f "$unit" "$counter"
+        # shellcheck disable=SC2086
+        rm -f "$unit" "$counter" $dropins
         systemctl daemon-reload
     fi
 }
@@ -55,6 +58,10 @@ phainon | khaslana | reaver | recurrence)
             { echo "ffmpeg could not read $video. Fedora's ffmpeg-free has no H.264; install ffmpeg from RPM Fusion." >&2; exit 1; }
         install -m 755 "$here/coreflame-recurrence-count" "$counter"
         sed "s|@HOME@|$user_home|g" "$here/coreflame-recurrence.service" > "$unit"
+        for d in $dropins; do
+            mkdir -p "$(dirname "$d")"
+            printf '[Service]\nExecStartPost=-%s "%s/.config/coreflame/boots"\n' "$counter" "$user_home" > "$d"
+        done
         systemctl daemon-reload
         systemctl enable coreflame-recurrence.service
     else

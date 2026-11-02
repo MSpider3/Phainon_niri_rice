@@ -149,6 +149,17 @@ Singleton {
     // so its cut-out never floats on the bare backdrop while the wallpaper loads or re-attaches.
     property var wallpaperUp: ({})
 
+    // Asks DMS's wallpaper surfaces to redraw from the file. A change made while a surface isn't
+    // drawing (at login, under a cinematic) can leave the old picture frozen on screen.
+    signal repaintWallpaper
+
+    // Let a form's wallpaper transition (1 s) finish first.
+    Timer {
+        id: wallpaperRepaint
+        interval: 3000
+        onTriggered: root.repaintWallpaper()
+    }
+
     function setWallpaperUp(screenName, up) {
         const next = Object.assign({}, wallpaperUp);
         next[screenName] = up;
@@ -296,6 +307,7 @@ Singleton {
 
     onFormChanged: {
         applyWallpaper();
+        wallpaperRepaint.restart();
         applyDesktop();
         playSound(form);
         if (active)

@@ -16,7 +16,10 @@ FONT = ROOT / "fonts" / "CoreflameDisplay-Regular.ttf"
 # Same values as the shell's cinematic sidecar (video-relative), and its 2^0.2 zoom.
 ZOOM = 2 ** 0.2
 CAP, PITCH = 0.037, 0.0413
-CAPTION = ["Eternal Recurrence", "Booting into the Simulation"]
+CAPTIONS = {  # file -> lines: boot, and shutdown / restart
+    "caption.png": ["Eternal Recurrence", "Booting into the Simulation"],
+    "caption-close.png": ["Eternal Recurrence", "Closing the Simulation"],
+}
 CAPTION_Y, CAPTION_CAP = 0.642, 0.018
 COLOR, GLOW = (0xE7, 0xD2, 0xAF), (0xB8, 0x79, 0x2A)
 REF_W, REF_H = 1920, 1080  # drawn for a 1080p screen; the splash scales to others
@@ -44,7 +47,7 @@ def digits():
         glow(layer).save(OUT / f"d{d}.png", optimize=True)
 
 
-def caption():
+def caption(name, lines):
     em = REF_H * ZOOM * CAPTION_CAP / 0.7
     font = ImageFont.truetype(str(FONT), round(em))
     spacing = em * 0.12
@@ -53,19 +56,20 @@ def caption():
     # Full-frame canvas, so the splash places it exactly like a video frame.
     layer = Image.new("RGBA", (REF_W, REF_H), COLOR + (0,))
     draw = ImageDraw.Draw(layer)
-    for i, line in enumerate(CAPTION):
+    for i, line in enumerate(lines):
         width = sum(font.getlength(c) + spacing for c in line)
         x, y = REF_W / 2 - width / 2, baseline + i * line_pitch
         for c in line:
             draw.text((x, y), c, font=font, fill=COLOR, anchor="ls")
             x += font.getlength(c) + spacing
-    glow(layer).save(OUT / "caption.png", optimize=True)
+    glow(layer).save(OUT / name, optimize=True)
 
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     digits()
-    caption()
+    for name, lines in CAPTIONS.items():
+        caption(name, lines)
     made = sorted(p.name for p in OUT.glob("*.png"))
-    assert made == ["caption.png"] + [f"d{d}.png" for d in "0123456789"], made
+    assert made == ["caption-close.png", "caption.png"] + [f"d{d}.png" for d in "0123456789"], made
     print("Wrote", ", ".join(made), "to", OUT)

@@ -91,6 +91,21 @@ Variants {
                 color: SettingsData.effectiveWallpaperBackgroundColor
             }
 
+            // Coreflame: redraw from the file. Either the wanted picture never took (a change lost
+            // while the surface wasn't drawing), or its frozen snapshot may hold an older one.
+            Connections {
+                target: Form
+                function onRepaintWallpaper() {
+                    if (!root.source || root.isColorSource)
+                        return;
+                    const wanted = root.source.startsWith("file://") ? root.source : root.encodeFileUrl(root.source);
+                    if (root.currentSource !== wanted)
+                        root.setWallpaperImmediate(wanted);
+                    else if (!root.transitioning && !root.effectActive)
+                        root.regenerate();
+                }
+            }
+
             function encodeFileUrl(path) {
                 if (!path)
                     return "";

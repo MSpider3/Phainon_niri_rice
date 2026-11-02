@@ -44,6 +44,7 @@ PanelWindow {
         player.source = "";
         playing = false;
         count = null;
+        Form.repaintWallpaper();
         const then = done;
         done = null;
         if (then)

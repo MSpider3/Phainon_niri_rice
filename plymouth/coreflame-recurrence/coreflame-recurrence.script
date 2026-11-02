@@ -1,7 +1,9 @@
 // Coreflame · Eternal Recurrence: the boot cinematic (frames f1.png, f2.png, ... made from
 // cinematics/boot.mp4 by install.sh) with this boot's cycle number and two lines at its end.
 // The number arrives as the message "cycle:<n>." from coreflame-recurrence.service once the
-// disk is mounted; without it the lines still show. Boot only: shutdown stays black.
+// disk is mounted; without it the lines still show. Shutdown and restart hold that shot, still,
+// with "Closing the Simulation" (the number is sent again as the shutdown screen starts).
+// Other modes (offline updates) stay black.
 FPS = 15;
 // Layout, as in the shell's cinematic sidecar (video-relative; the frames are already zoomed).
 ZOOM = 1.148698;
@@ -17,7 +19,9 @@ Window.SetBackgroundTopColor(0, 0, 0);
 Window.SetBackgroundBottomColor(0, 0, 0);
 screen_w = Window.GetWidth();
 screen_h = Window.GetHeight();
-booting = Plymouth.GetMode() == "boot";
+mode = Plymouth.GetMode();
+booting = mode == "boot";
+closing = mode == "shutdown" || mode == "reboot";
 
 // Fill the screen like the video does: crop, never letterbox.
 first = Image("f1.png");
@@ -29,6 +33,9 @@ frame_y = (screen_h - frame_h) / 2;
 video = Sprite();
 video.SetPosition(frame_x, frame_y, 0);
 if (booting) video.SetImage(first.Scale(frame_w, frame_h));
+// The shot the number sits in, 7.8 s into the video.
+held = Image("f" + Math.Int(7.8 * FPS + 1) + ".png");
+if (closing) video.SetImage(held.Scale(frame_w, frame_h));
 
 // The number and lines grow from here, like the shell's overlay.
 origin_x = frame_x + ((NX - 0.5) * ZOOM + 0.5) * frame_w;
@@ -42,7 +49,8 @@ for (i = 0; i < 10; i++) {
     d = Image("d" + c + ".png");
     digit_image[c] = d.Scale(d.GetWidth() * ref, d.GetHeight() * ref);
 }
-caption_base = Image("caption.png");
+if (closing) caption_base = Image("caption-close.png");
+else caption_base = Image("caption.png");
 caption_full = caption_base.Scale(frame_w, frame_h);
 caption = Sprite();
 count = 0;
@@ -62,6 +70,7 @@ fun message_callback(text) {
         n++;
     }
     global.count = n;
+    if (closing) place(1, 1);
 }
 Plymouth.SetDisplayMessageFunction(message_callback);
 
@@ -79,6 +88,8 @@ fun place(g, a) {
     caption.SetPosition(origin_x + (frame_x - origin_x) * g, origin_y + (frame_y - origin_y) * g, 2);
     caption.SetOpacity(a);
 }
+
+if (closing) place(1, 1);
 
 tick = 0;
 shown = 1;
