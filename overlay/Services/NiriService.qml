@@ -1201,13 +1201,13 @@ Singleton {
         }
     }
 
-    // Window animations fall back to a fade under Power Saver. Motion.still is not used here
-    // because it is also true for the whole Reaver form, and the eclipse plays in every form.
+    // The eclipse window animation comes and goes with Motion.richWindows (mains, no Power Saver,
+    // no "reduce motion"); without it niri plays the animation from the user's own config.
     Connections {
         target: Motion
 
-        function onSaverChanged() {
-            if (CompositorService.isNiri && Form.active)
+        function onRichWindowsChanged() {
+            if (CompositorService.isNiri)
                 root.generateNiriLayoutConfig();
         }
     }
@@ -1341,7 +1341,7 @@ window-rule {
     clip-to-geometry true
     tiled-state true
     draw-border-with-background false
-}` + niriBlurBlock(typeof SettingsData !== "undefined" ? SettingsData.blurStrength : 0) + xrayRules + (Form.active ? "\n\n" + CoreflameNiri.animations(Motion.saver) : "");
+}` + niriBlurBlock(typeof SettingsData !== "undefined" ? SettingsData.blurStrength : 0) + xrayRules + (Motion.richWindows ? "\n\n" + CoreflameNiri.animations() : "");
 
         const alttabContent = dmsWarning + `recent-windows {
     highlight {

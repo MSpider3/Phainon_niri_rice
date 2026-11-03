@@ -142,6 +142,9 @@ Singleton {
     property bool openingPlayed: false
     // Bumped by any lock surface on key or pointer input, so the lock video stops on every screen.
     property int lockInput: 0
+    // Screen brightness from before the lock video dimmed it on battery (-1: not dimmed). Shared,
+    // so with several screens only the first video dims and the last one to stop restores.
+    property int lockDimSaved: -1
 
     // DMS's wallpaper surface on this screen was mapped again (first load, or its watchdog's re-attach).
     signal wallpaperMapped(string screenName)
@@ -210,7 +213,20 @@ Singleton {
     // The terminal prompt and cycle file are written at start; rewrite them if the count lands late.
     onCycleChanged: {
         if (settled)
-            applyDesktop();
+            writeCycle();
+    }
+
+    // The terminal prompt and the cycle file show the count; nothing else depends on it.
+    function writeCycle() {
+        if (!active || !live)
+            return;
+        Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", cycleText, stateDir + "/cycle"]);
+        const rgb = ({
+                "phainon": "51;71;134",
+                "khaslana": "212;177;74",
+                "reaver": "122;106;168"
+            })[form] ?? "200;200;200";
+        Quickshell.execDetached(["sh", "-c", "printf '\\033[38;2;%sm✦ [Cycle %s]\\033[0m' \"$1\" \"$2\" > \"$3\"", "sh", rgb, cycleText, stateDir + "/prompt"]);
     }
 
     // Each form has its wallpaper. Changing form changes it; random wallpaper cycling is switched
@@ -277,7 +293,7 @@ Singleton {
         // Each form has its own Fastfetch layout; your original is kept in fastfetch-config.jsonc.before.
         const fetchConfig = String(Qt.resolvedUrl("../assets/coreflame/fastfetch/" + form + ".jsonc")).replace("file://", "");
         Quickshell.execDetached(["ln", "-sfn", fetchConfig, Quickshell.env("HOME") + "/.config/fastfetch/config.jsonc"]);
-        Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", cycleText, stateDir + "/cycle"]);
+        writeCycle();
         // btop reads themes/coreflame.theme, which points at this form's colours.
         const btopTheme = String(Qt.resolvedUrl("../assets/coreflame/btop/" + form + ".theme")).replace("file://", "");
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$2\" && ln -sfn \"$1\" \"$2/coreflame.theme\"", "sh", btopTheme, Quickshell.env("HOME") + "/.config/btop/themes"]);
@@ -287,12 +303,6 @@ Singleton {
             SettingsData.setCursorTheme(cursor);
         if (cursor)
             Quickshell.execDetached(["gsettings", "set", "org.gnome.desktop.interface", "cursor-theme", cursor]);
-        const rgb = ({
-                "phainon": "51;71;134",
-                "khaslana": "212;177;74",
-                "reaver": "122;106;168"
-            })[form] ?? "200;200;200";
-        Quickshell.execDetached(["sh", "-c", "printf '\\033[38;2;%sm✦ [Cycle %s]\\033[0m' \"$1\" \"$2\" > \"$3\"", "sh", rgb, cycleText, stateDir + "/prompt"]);
     }
 
     // Sounds (CC0, see assets/coreflame/sounds/CREDITS): one when the form changes, glass when the
@@ -305,23 +315,29 @@ Singleton {
         Quickshell.execDetached(["pw-play", String(Qt.resolvedUrl("../assets/coreflame/sounds/" + name + ".ogg")).replace("file://", "")]);
     }
 
-    onFormChanged: {
-        applyWallpaper();
-        wallpaperRepaint.restart();
-        applyDesktop();
-        playSound(form);
-        if (active)
-            Coreflames.sawForm(form);
-    }
+    // The form's side effects run once per change, a moment after it: while settings load, the
+    // form can pass through the default before the stored one lands.
+    onFormChanged: formApply.restart()
 
     Timer {
-        interval: 4000
-        running: true
+        id: formApply
+        interval: 300
         onTriggered: {
             root.applyWallpaper();
+            wallpaperRepaint.restart();
             root.applyDesktop();
-            root.settled = true;
+            root.playSound(root.form);
+            if (root.active)
+                Coreflames.sawForm(root.form);
         }
+    }
+
+    // Start-up is over a few seconds after the form first applies; changes after that are the
+    // user's (or the schedule's), and get the sound, the transformation and the toast.
+    Timer {
+        interval: 4000
+        running: root.active && !root.settled
+        onTriggered: root.settled = true
     }
 
     // Forms by the hour: each form has a start time and holds until the next one starts.

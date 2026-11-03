@@ -151,12 +151,23 @@ PanelWindow {
 
     // Fail-safe from the inside: on the real session, if the shell still has no connection to the
     // DMS backend half a minute after starting, hand back to stock DMS.
+    // Remembers any connection: the backend can reconnect during start-up, and a reconnect that
+    // happened to land on the 30 s mark must not count as no connection.
+    property bool backendSeen: DMSService.isConnected
+    Connections {
+        target: DMSService
+        function onIsConnectedChanged() {
+            if (DMSService.isConnected)
+                win.backendSeen = true;
+        }
+    }
+
     Timer {
         interval: 30000
         running: (Quickshell.env("DMS_SHELL_DIR") ?? "") !== "" && !Form.startupChecked
         onTriggered: {
             Form.startupChecked = true;
-            if (!DMSService.isConnected)
+            if (!win.backendSeen && !DMSService.isConnected)
                 Quickshell.execDetached(["systemctl", "--user", "start", "coreflame-fallback.service"]);
         }
     }
@@ -506,6 +517,22 @@ PanelWindow {
             item.close();
         else
             item.toggle();
+    }
+
+    // Closed panels give their memory back: checked once a minute while any is loaded. The
+    // launcher stays (it must open instantly), and so does the notepad (unsaved text).
+    Timer {
+        interval: 60000
+        repeat: true
+        running: dashLoader.active || controlLoader.active || clipboardLoader.active || processLoader.active || powerLoader.active || cinemaLoader.active
+        onTriggered: {
+            for (const l of [dashLoader, controlLoader, clipboardLoader, processLoader, powerLoader]) {
+                if (l.active && l.item && !l.item.shown && !l.item.visible)
+                    l.active = false;
+            }
+            if (cinemaLoader.active && cinemaLoader.item && !cinemaLoader.item.playing && !win.pendingCinematic)
+                cinemaLoader.active = false;
+        }
     }
 
     LazyLoader {
@@ -1100,7 +1127,8 @@ PanelWindow {
             target: Form
 
             function onFormChanged() {
-                if (!Form.active)
+                // Start-up settles the form without ceremony; only later changes transform.
+                if (!Form.active || !Form.settled)
                     return;
                 win.gtkStale = true;
                 gtkTimer.restart();

@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Services
 
 // One chimera for the whole shell. The corner sprite and the chimera (cat) plugin both read
 // their CPU load, sleep/wake state and current step from here, so they always move together.
@@ -78,7 +79,7 @@ Singleton {
     Timer {
         interval: root.pollMs
         repeat: true
-        running: root.watchers > 0
+        running: root.watchers > 0 && !IdleService.isShellLocked
         triggeredOnStart: true
         onTriggered: root.sample()
     }
@@ -87,7 +88,8 @@ Singleton {
         // The cat widget's curve: about 300 ms a step at 15 %, 180 at 40 %, 90 at 70 %.
         interval: Math.max(60, Math.ceil(5000 / Math.sqrt(root.load + 35) - 400))
         repeat: true
-        running: root.watchers > 0 && !root.asleep
+        // Walks only on mains with full motion, and never behind the lock screen.
+        running: root.watchers > 0 && !root.asleep && Motion.tier === "full" && !IdleService.isShellLocked
         onTriggered: root.step = (root.step + 1) % root.cycle.length
     }
 }

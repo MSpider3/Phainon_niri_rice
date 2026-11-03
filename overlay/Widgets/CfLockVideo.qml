@@ -3,10 +3,12 @@ import QtMultimedia
 import qs.Common
 import qs.Services
 
-// The lock-screen video: after 15 s locked with no input, while plugged in or at 50 % battery or
-// more, cinematics/lock.mp4 plays full screen, muted, on a loop. Any key or pointer movement ends
-// it at once (that key is not typed), and so does unplugging below 50 %. A missing or broken file
-// just means no video. It sits above the lock screen and never touches authentication.
+// The lock-screen video: after 15 s locked with no input, cinematics/lock.mp4 plays full screen,
+// muted, on a loop. On battery it plays the 720p copy (lock-lite.mp4) instead and dims the screen
+// to 60 % of its level until the next input, and it does not start below 20 % battery. It pauses
+// while the screen is off. Any key or pointer movement ends it at once (that key is not typed).
+// A missing or broken file just means no video. It sits above the lock screen and never touches
+// authentication.
 Item {
     id: root
 
@@ -14,13 +16,35 @@ Item {
     property bool armed: true
     property bool playing: false
     property bool failed: false
-    readonly property bool powerOk: !BatteryService.batteryAvailable || BatteryService.isPluggedIn || BatteryService.batteryLevel >= 50
+    readonly property bool onBattery: BatteryService.batteryAvailable && !BatteryService.isPluggedIn
+    readonly property bool powerOk: !onBattery || BatteryService.batteryLevel >= 20
+    readonly property bool screenOn: !IdleService.monitorsOff
 
     signal dismissed
 
     // Input seen on any screen: end the video and count the 15 s again everywhere.
     function poke() {
         Form.lockInput++;
+    }
+
+    function dim() {
+        // The laptop's own panel only: never an external screen or an LED.
+        const panel = BrightnessService.internalPanelDevice();
+        if (!onBattery || Form.lockDimSaved >= 0 || !panel || panel.class !== "backlight")
+            return;
+        const level = BrightnessService.getDeviceBrightness(panel.id);
+        Form.lockDimSaved = level;
+        BrightnessService.setBrightness(Math.max(10, Math.round(level * 0.6)), panel.id, true);
+    }
+
+    function undim() {
+        if (Form.lockDimSaved < 0)
+            return;
+        const level = Form.lockDimSaved;
+        const panel = BrightnessService.internalPanelDevice();
+        Form.lockDimSaved = -1;
+        if (panel)
+            BrightnessService.setBrightness(level, panel.id, true);
     }
 
     Connections {
@@ -32,26 +56,34 @@ Item {
         }
     }
 
+    // Plugging in or unplugging restarts the wait, so the next play uses the right copy.
+    onOnBatteryChanged: playing = false
     onPowerOkChanged: if (!powerOk)
+        playing = false
+    onScreenOnChanged: if (!screenOn)
         playing = false
     onArmedChanged: if (!armed)
         playing = false
     onPlayingChanged: {
         if (playing) {
-            player.source = "file://" + Form.stateDir + "/cinematics/lock.mp4";
+            player.source = "file://" + Form.stateDir + "/cinematics/" + (onBattery ? "lock-lite.mp4" : "lock.mp4");
             player.play();
+            dim();
         } else {
             player.stop();
             player.source = "";
+            undim();
             dismissed();
         }
     }
+    // Unlocked while it played (fingerprint, or the lock torn down): put the brightness back.
+    Component.onDestruction: undim()
 
     Timer {
         id: idle
         interval: 15000
-        running: Form.active && root.armed && root.powerOk && !root.playing && !root.failed
-        onTriggered: root.playing = root.armed && root.powerOk
+        running: Form.active && root.armed && root.powerOk && root.screenOn && !root.playing && !root.failed
+        onTriggered: root.playing = root.armed && root.powerOk && root.screenOn
     }
 
     // Passive: sees pointer movement anywhere on the lock screen without taking it from the widgets.

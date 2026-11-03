@@ -61,6 +61,8 @@ Environment=DMS_SHELL_DIR=$target
 TimeoutStartSec=60
 # One failure is enough to go back to stock; no retry loop.
 Restart=no
+# Start in this hour's form when forms follow the clock (never blocks the start).
+ExecStartPre=-/bin/sh $state/guard.sh preselect
 ExecStartPost=/bin/sh $state/guard.sh check
 EOF
     systemctl --user daemon-reload

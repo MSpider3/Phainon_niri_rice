@@ -90,12 +90,12 @@ mkdir -p "$walls"
 cp -n "$here"/wallpapers/* "$walls/"
 
 # Opening (first shell start after a boot) and closing (restart / shut down) cinematics, the
-# lock-screen video, and the art the power menu (Phainon) and lock screen (Khaslana) show.
+# lock-screen video (and its 720p copy for battery), and the art the power menu (Phainon) and lock screen (Khaslana) show.
 # A file already there is kept, so your own clips and pictures survive a reinstall.
 cine="${XDG_CONFIG_HOME:-$HOME/.config}/coreflame/cinematics"
 echo "Cinematics -> $cine"
 mkdir -p "$cine"
-cp -n "$here"/cinematics/*.mkv "$here"/cinematics/lock.mp4 "$here"/cinematics/*.png "$cine/"
+cp -n "$here"/cinematics/*.mkv "$here"/cinematics/lock.mp4 "$here"/cinematics/lock-lite.mp4 "$here"/cinematics/*.png "$cine/"
 
 if [ "$icons" = 1 ]; then
     sh "$here/tools/icons.sh"

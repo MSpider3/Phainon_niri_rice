@@ -263,10 +263,28 @@ PanelWindow {
             }
         }
 
+        // Only a box around the time and date goes into the glow, not the whole screen.
+        ShaderEffectSource {
+            id: faceCrop
+            readonly property real pad: 64
+            // Not left/top/right/bottom: every Item already has those (anchor lines).
+            readonly property real x0: Math.max(0, Math.min(time.x, date.x) - pad)
+            readonly property real y0: Math.max(0, Math.min(time.y, date.y) - pad)
+            readonly property real x1: Math.min(face.width, Math.max(time.x + time.width, date.x + date.width) + pad)
+            readonly property real y1: Math.min(face.height, Math.max(time.y + time.height, date.y + date.height) + pad)
+            sourceItem: face
+            sourceRect: Qt.rect(x0, y0, width, height)
+            x: x0
+            y: y0
+            width: Math.max(1, x1 - x0)
+            height: Math.max(1, y1 - y0)
+            visible: false
+        }
+
         // The glow that lifts the time and date off the wallpaper; redrawn when the minute changes.
         MultiEffect {
-            source: face
-            anchors.fill: face
+            source: faceCrop
+            anchors.fill: faceCrop
             shadowEnabled: true
             shadowColor: root.glow
             shadowBlur: 1.0

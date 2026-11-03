@@ -126,7 +126,8 @@ PanelWindow {
             spacing: 14
 
             Repeater {
-                model: dock.windowsHere
+                // Built only while showing: the window list changes on every focus and title change.
+                model: bar.visible ? dock.windowsHere : []
 
                 Item {
                     id: slot

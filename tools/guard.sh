@@ -2,6 +2,8 @@
 # Coreflame fail-safe. Installed to ~/.config/coreflame/guard.sh by `coreflame.sh`.
 #
 #   guard.sh snapshot   remember the theme settings in use right now (your stock setup)
+#   guard.sh preselect  run by systemd just before DMS starts: when forms follow the clock,
+#                       write this hour's form into the settings, so the shell starts in it
 #   guard.sh check      run by systemd just after DMS starts with the Coreflame interface:
 #                       fails unless the shell answers and has drawn its top-of-screen pieces
 #   guard.sh fallback   run by systemd when DMS fails while Coreflame is on (or by the shell
@@ -104,6 +106,59 @@ check)
     exit 0
     ;;
 
+preselect)
+    # Run by systemd just before DMS starts. When forms follow the clock, start straight in this
+    # hour's form, so the shell draws it first time: no switch at login, one theme build, the right
+    # wallpaper from the first frame. Same rule as Form.scheduledForm; the sun mode is left to the shell.
+    python3 -I - "$settings" "$session" "$state/schedule.json" "$HOME/Pictures/Phainon" << 'EOF'
+import json, os, sys, time
+settings, session, schedule, walls = sys.argv[1:5]
+try:
+    s = json.load(open(schedule))
+    cfg = json.load(open(settings))
+    ses = json.load(open(session))
+except Exception:
+    sys.exit(0)
+if not s.get("enabled") or s.get("sun") or "coreflame" not in str(cfg.get("customThemeFile", "")):
+    sys.exit(0)
+defaults = {"phainon": "08:00", "khaslana": "17:00", "reaver": "01:00"}
+def minutes(form):
+    for value in (s.get(form), defaults[form]):
+        try:
+            h, m = str(value).split(":")
+            return int(h) * 60 + int(m)
+        except ValueError:
+            pass
+now = time.localtime()
+at = now.tm_hour * 60 + now.tm_min
+starts = sorted(((f, minutes(f)) for f in ("phainon", "khaslana", "reaver")), key=lambda x: x[1])
+# Before the first start of the day, the last one of yesterday still holds.
+pick = starts[-1][0]
+for form, start in starts:
+    if start <= at:
+        pick = form
+variants = cfg.get("registryThemeVariants") or {}
+wall = os.path.join(walls, {"phainon": "phianon.png", "khaslana": "khaslana.png", "reaver": "flame reaver.jpeg"}[pick])
+def save(path, data):
+    tmp = path + ".coreflame-tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+if variants.get("coreflame") != pick:
+    variants["coreflame"] = pick
+    cfg["registryThemeVariants"] = variants
+    save(settings, cfg)
+light = pick == "phainon"
+if ses.get("isLightMode") != light or (os.path.exists(wall) and ses.get("wallpaperPath") != wall):
+    ses["isLightMode"] = light
+    if os.path.exists(wall):
+        ses["wallpaperPath"] = wall
+    save(session, ses)
+print(pick)
+EOF
+    exit 0
+    ;;
+
 fallback)
     say "falling back to stock DMS (${2:-DMS failed while the Coreflame interface was on})"
     systemctl --user stop dms.service 2>/dev/null
@@ -159,7 +214,7 @@ EOF
     ;;
 
 *)
-    echo "usage: $0 snapshot | check | fallback [reason] | gtk-on | gtk-off" >&2
+    echo "usage: $0 snapshot | preselect | check | fallback [reason] | gtk-on | gtk-off" >&2
     exit 2
     ;;
 esac

@@ -168,19 +168,10 @@ vec4 ${fn}(vec3 coords_geo, vec3 size_geo) {
 }`;
 }
 
-// The "still" fallback (Power Saver): a plain fade.
-function fade(fn, closing) {
-    return `
-vec4 ${fn}(vec3 coords_geo, vec3 size_geo) {
-    vec3 t = niri_geo_to_tex * coords_geo;
-    vec4 color = texture2D(niri_tex, t.st);
-    return color * (${closing ? "1.0 - " : ""}niri_clamped_progress);
-}`;
-}
-
-function animations(still) {
-    const make = still ? fade : eclipse;
-    const len = still ? 150 : ms;
+// Only on mains (Motion.richWindows); otherwise nothing is written and niri uses its own.
+function animations() {
+    const make = eclipse;
+    const len = ms;
     return `animations {
     window-open {
         duration-ms ${len}
