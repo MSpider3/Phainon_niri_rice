@@ -60,6 +60,22 @@ that looked like no animation at all. Otherwise it used the 650 ms eclipse shade
 **Fixed:** the eclipse plays on mains with full motion. On battery, under Power Saver or with
 "reduce motion", the shell adds no window animation, so niri plays the one from your own config.
 
+## After the per-form redesign
+
+Measured on the live shell in the Flame Reaver form, idle, on mains, 4 November 2026.
+
+| | Budget | Measured |
+|---|---|---|
+| Idle CPU of the shell (90 s sample) | 0.35 % | 0.10 % |
+| Main-thread wakeups per second (90 s) | about 11 | 2.3 (16.9 across all threads) |
+| Shell memory just after start | about 520 MB | 485–495 MB |
+| Opening the dashboard, control centre, launcher or power menu | | +10 to +25 MB while open, back to 499 MB about a minute after closing |
+
+The new looks follow the redesign's rules: the cracks, tides, shards, drapes and medallions are
+static shapes drawn once; motion runs only while a panel opens; there is no blur in the new
+pieces (the Khaslana lock mural and its blur are gone); and each panel builds only the open
+form's layout, and only while it is shown.
+
 ## Not changed yet
 
 - The opening cinematic still waits a fixed 2 s for the desktop instead of waiting for it to be
