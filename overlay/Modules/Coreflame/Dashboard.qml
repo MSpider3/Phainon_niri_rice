@@ -27,7 +27,8 @@ PanelWindow {
             Coreflames.earn("sky");
     }
     property bool shown: false
-    property real reveal: shown ? 1 : 0
+    property real opening: shown ? 1 : 0
+    readonly property real reveal: Motion.step(opening)
 
     readonly property MprisPlayer player: MprisController.activePlayer
     readonly property bool playing: !!player && player.playbackState === MprisPlaybackState.Playing
@@ -93,10 +94,10 @@ PanelWindow {
         right: true
     }
 
-    Behavior on reveal {
+    Behavior on opening {
         NumberAnimation {
-            duration: Theme.mediumDuration
-            easing.type: Form.phainon ? Easing.OutBack : (Form.khaslana ? Easing.InOutCubic : Easing.OutCubic)
+            duration: Motion.openMs
+            easing.type: Motion.openEasing
             easing.overshoot: 0.8
         }
     }

@@ -583,7 +583,7 @@ PanelWindow {
                         readonly property bool current: modelData.is_active
                         readonly property bool occupied: modelData.active_window_id != null
                         readonly property int number: modelData.idx
-                        readonly property color ink: current ? Theme.primary : Theme.withAlpha(Theme.surfaceText, occupied ? 0.7 : 0.32)
+                        readonly property color ink: current ? (Form.reaver ? "#B9A8FF" : Theme.primary) : Theme.withAlpha(Theme.surfaceText, occupied ? 0.7 : 0.32)
                         width: Form.phainon ? 16 : (Form.khaslana ? numeral.implicitWidth : (Form.reaver ? tally.implicitWidth : mark.width))
                         height: 18
 
@@ -647,6 +647,16 @@ PanelWindow {
                             font.pixelSize: Theme.fontSizeMedium
                             font.weight: ws.current ? Font.Bold : Font.Medium
                             color: ws.ink
+
+                            // Khaslana's current numeral carries a red echo, 2 px to the right
+                            StyledText {
+                                visible: ws.current
+                                x: 2
+                                z: -1
+                                text: numeral.text
+                                font: numeral.font
+                                color: "#8E1424"
+                            }
                         }
 
                         Row {
@@ -718,7 +728,7 @@ PanelWindow {
             anchors.verticalCenter: parent.verticalCenter
             name: "notifications_active"
             size: 20
-            color: Theme.primary
+            color: Form.khaslana ? "#E2434E" : (Form.phainon ? "#A87A22" : Theme.primary)
         }
 
         // A line of lore in front of every notification: a decree, a recurrence notice,
@@ -730,7 +740,7 @@ PanelWindow {
             font.family: Form.phainon ? Form.display(Theme.fontFamily) : Theme.monoFontFamily
             font.pixelSize: Theme.fontSizeSmall
             font.letterSpacing: Form.phainon ? 1.5 : 0
-            color: Form.reaver ? Theme.withAlpha(Theme.surfaceText, 0.45) : Theme.secondary
+            color: Form.reaver ? Theme.withAlpha(Theme.surfaceText, 0.45) : (Form.khaslana ? "#E0B04A" : "#A87A22")
         }
 
         StyledText {
@@ -761,14 +771,18 @@ PanelWindow {
             Item {
                 id: toastAction
                 required property var modelData
+                required property int index
+                // Khaslana's first action is the red plate; the rest are outlined
+                readonly property bool lead: Form.khaslana && index === 0
                 anchors.verticalCenter: parent.verticalCenter
                 width: actionLabel.implicitWidth + 18
                 height: 24
 
                 CfSurface {
                     anchors.fill: parent
-                    color: Theme.primary
-                    edgeWidth: 0
+                    color: !Form.active ? Theme.primary : (Form.phainon ? "#FBF9F3" : (toastAction.lead ? "#8E1424" : (Form.reaver ? "#1C1828" : "transparent")))
+                    edgeWidth: Form.active ? 1 : 0
+                    edgeColor: Form.phainon ? "#C8B27E" : (toastAction.lead ? "#F2C75C" : (Form.reaver ? "#5C5478" : "#8A5A2B"))
                     radius: 12
                     cut: 5
                 }
@@ -779,7 +793,7 @@ PanelWindow {
                     text: Form.reaver ? toastAction.modelData.text.toLowerCase() : toastAction.modelData.text
                     font.pixelSize: Theme.fontSizeSmall
                     font.weight: Font.DemiBold
-                    color: Theme.primaryText
+                    color: !Form.active ? Theme.primaryText : (toastAction.lead ? "#F5D27A" : Theme.surfaceText)
                 }
 
                 MouseArea {
@@ -814,6 +828,7 @@ PanelWindow {
         // While an island panel is open it shows in the panel's top edge instead (noticeLoader).
         readonly property var latest: NotificationService.popups.length > 0 ? NotificationService.popups[NotificationService.popups.length - 1] : null
         readonly property var toast: win.panelOpen ? null : latest
+        readonly property bool noting: !!toast && Form.active
         onLatestChanged: {
             toastTimer.restart();
             if (latest && win.lead)
@@ -879,7 +894,7 @@ PanelWindow {
             audio.volume = Math.max(0, Math.min(1, audio.volume + (up ? 0.03 : -0.03)));
         }
 
-        height: win.strip + (Form.reaver ? 6 : 0)
+        height: win.strip + (noting ? 8 : (Form.reaver ? 6 : 0))
         width: (toast ? toastRow.implicitWidth : (busy ? activityRow.implicitWidth : islandRow.implicitWidth)) + 44
         x: Math.round((win.width - width) / 2)
         clip: true
@@ -1141,9 +1156,14 @@ PanelWindow {
             }
         }
 
+        // A notice turns the island into the form's notice plate: a parchment decree, a black plate
+        // with a gold edge and a red offset, or the Reaver's slab with a violet hem.
         CfTab {
             anchors.fill: parent
             side: "center"
+            color: !island.noting ? Theme.surface : (Form.phainon ? "#F7F3E8" : (Form.khaslana ? "#0B080B" : "#0D0B14"))
+            edge: !island.noting ? Theme.outline : (Form.phainon ? "#C8B27E" : (Form.khaslana ? "#E0B04A" : "#8F7BE0"))
+            echoSolid: island.noting && Form.khaslana
         }
 
         // Irontomb: a critical alert darkens the island to black under red text
@@ -1690,7 +1710,7 @@ PanelWindow {
             id: toastRow
             visible: !!island.toast
             anchors.horizontalCenter: parent.horizontalCenter
-            height: win.strip
+            height: island.height
             note: island.toast
         }
     }

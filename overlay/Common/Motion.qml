@@ -18,6 +18,15 @@ Singleton {
     // motion allowed, in every form; otherwise niri's own animation from the user's config plays.
     readonly property bool richWindows: Form.active && !onBattery && !saver && !reduced
 
+    // How every island panel opens (its `reveal` follows `opening` through step()): Phainon grows
+    // with an overshoot, Khaslana spills heavily, the Flame Reaver cracks open in four hard steps.
+    // Reduce motion or Power Saver: no motion at all.
+    readonly property int openMs: !Form.active ? Theme.mediumDuration : ((reduced || saver) ? 0 : (Form.reaver ? 200 : Theme.mediumDuration))
+    readonly property int openEasing: !Form.active ? Easing.OutCubic : (Form.phainon ? Easing.OutBack : (Form.khaslana ? Easing.InOutCubic : Easing.Linear))
+    function step(r) {
+        return Form.reaver ? Math.ceil(r * 4) / 4 : r;
+    }
+
     // Reshapes Theme's base animation duration (DMS 2.0 derives every other duration from it)
     // for the current form and tier. Still caps the longest animation at 140 ms.
     function base(ms) {

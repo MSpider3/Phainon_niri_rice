@@ -14,7 +14,8 @@ PanelWindow {
 
     required property var targetScreen
     property bool shown: false
-    property real reveal: shown ? 1 : 0
+    property real opening: shown ? 1 : 0
+    readonly property real reveal: Motion.step(opening)
     property int selected: 0
     property int armed: -1
     property bool canHibernate: false
@@ -151,10 +152,11 @@ PanelWindow {
         right: true
     }
 
-    Behavior on reveal {
+    Behavior on opening {
         NumberAnimation {
-            duration: Theme.shortDuration
-            easing.type: Easing.OutCubic
+            duration: Form.active ? Motion.openMs : Theme.shortDuration
+            easing.type: Motion.openEasing
+            easing.overshoot: 0.6
         }
     }
 

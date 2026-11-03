@@ -12,6 +12,7 @@ Item {
     property string side: "center"
     property color color: Theme.surface
     property color edge: Theme.outline
+    property bool echoSolid: false   // Khaslana notices: a solid red offset instead of the outline echo
 
     readonly property bool soft: Form.phainon || !Form.active
     readonly property real softRadius: Math.min(height * 0.6, 24)
@@ -49,15 +50,15 @@ Item {
     // Khaslana commands the simulation's errors: his edges carry a displaced red echo.
     Shape {
         visible: Form.khaslana
-        x: 3
-        y: 2
+        x: root.echoSolid ? 5 : 3
+        y: root.echoSolid ? 4 : 2
         width: parent.width
         height: parent.height
         preferredRendererType: Shape.CurveRenderer
 
         ShapePath {
-            fillColor: "transparent"
-            strokeColor: Theme.withAlpha(Theme.error, 0.55)
+            fillColor: root.echoSolid ? "#8E1424" : "transparent"
+            strokeColor: root.echoSolid ? "transparent" : Theme.withAlpha(Theme.error, 0.55)
             strokeWidth: 1.5
 
             PathPolyline {

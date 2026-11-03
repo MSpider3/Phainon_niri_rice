@@ -22,7 +22,8 @@ PanelWindow {
     required property var targetScreen
     property int strip: 40
     property bool shown: false
-    property real reveal: shown ? 1 : 0
+    property real opening: shown ? 1 : 0
+    readonly property real reveal: Motion.step(opening)
     property bool editMode: false
     property var editingApp: null
     property string editAppId: ""
@@ -222,10 +223,10 @@ PanelWindow {
         right: true
     }
 
-    Behavior on reveal {
+    Behavior on opening {
         NumberAnimation {
-            duration: Theme.mediumDuration
-            easing.type: Form.phainon ? Easing.OutBack : (Form.khaslana ? Easing.InOutCubic : Easing.OutCubic)
+            duration: Motion.openMs
+            easing.type: Motion.openEasing
             easing.overshoot: 0.6
         }
     }
