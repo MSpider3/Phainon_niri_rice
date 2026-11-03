@@ -118,6 +118,8 @@ DashCard {
             height: 22
 
             StyledText {
+                style: cal.bare ? Text.Outline : Text.Normal
+                styleColor: "#0B080B"
                 anchors.centerIn: parent
                 text: cal.tx(cal.month.toLocaleDateString(I18n.locale(), "MMMM yyyy"))
                 font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
@@ -158,6 +160,8 @@ DashCard {
                 model: 7
 
                 StyledText {
+                    style: cal.bare ? Text.Outline : Text.Normal
+                    styleColor: "#0B080B"
                     required property int index
                     width: days.cell
                     height: 18
@@ -197,6 +201,8 @@ DashCard {
                     }
 
                     StyledText {
+                        style: cal.bare ? Text.Outline : Text.Normal
+                        styleColor: "#0B080B"
                         id: num
                         anchors.centerIn: parent
                         text: day.when.getDate()
@@ -239,6 +245,8 @@ DashCard {
         }
 
         StyledText {
+            style: cal.bare ? Text.Outline : Text.Normal
+            styleColor: "#0B080B"
             width: parent.width
             text: cal.tx(cal.selected.toLocaleDateString(I18n.locale(), "dddd d MMMM"))
             font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
@@ -269,6 +277,8 @@ DashCard {
                 }
 
                 StyledText {
+                    style: cal.bare ? Text.Outline : Text.Normal
+                    styleColor: "#0B080B"
                     width: 62
                     text: modelData.allDay ? cal.tx("All day") : cal.parse(modelData.start).toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm ap")
                     font.family: Theme.monoFontFamily
@@ -277,6 +287,8 @@ DashCard {
                 }
 
                 StyledText {
+                    style: cal.bare ? Text.Outline : Text.Normal
+                    styleColor: "#0B080B"
                     width: parent.width - 62 - 3 - 16
                     elide: Text.ElideRight
                     text: cal.tx(modelData.summary)
@@ -286,6 +298,8 @@ DashCard {
             }
 
             StyledText {
+                style: cal.bare ? Text.Outline : Text.Normal
+                styleColor: "#0B080B"
                 visible: cal.dayEvents.length === 0
                 text: Form.reaver ? "nothing." : "No events"
                 font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
