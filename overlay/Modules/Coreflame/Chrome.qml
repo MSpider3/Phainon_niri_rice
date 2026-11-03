@@ -78,8 +78,8 @@ PanelWindow {
         if (what === "open") {
             item?.open();
             const s = String(section ?? "");
-            const key = ["connectivity", "sound", "power", "system"].includes(s) ? s : /^(wifi|network|ethernet|bluetooth|vpn)/i.test(s) ? "connectivity" : /^(audio|mic|sound|volume)/i.test(s) ? "sound" : /^(battery|power)/i.test(s) ? "power" : "system";
-            if (item && s && item.section !== key)
+            const key = /^bluetooth/i.test(s) ? "bt" : /^(wifi|network|ethernet|vpn|connectivity)/i.test(s) ? "wifi" : /^mic/i.test(s) ? "mic" : /^(audio|sound|volume)/i.test(s) ? "out" : /^(battery|power)/i.test(s) ? "battery" : /^(system|apps)/i.test(s) ? "apps" : "";
+            if (item && key && item.section !== key)
                 item.toggleSection(key);
         }
         else if (what === "close")
