@@ -153,21 +153,6 @@ FocusScope {
         backgroundKey: root.backgroundKey
     }
 
-    // Coreflame: Phainon places its time where the wallpaper is clearest. DMS samples the wallpaper
-    // before locking only while its own clock is auto-placed, so take the sample here when there is
-    // none yet; it is cached per wallpaper, so this runs once, not on every lock.
-    property string placementFailedKey: ""
-    Loader {
-        active: Form.phainon && root.screenName !== "" && background.ready && root.placementFailedKey !== root.backgroundKey && !LockPlacementService.hasSample(root.screenName, root.backgroundKey)
-        sourceComponent: LockBackgroundSampler {
-            sourceItem: background
-            ready: background.ready
-            renderKey: root.backgroundKey
-            onFailed: root.placementFailedKey = root.backgroundKey
-            onSampled: (luminances, sampleWidth, sampleHeight) => LockPlacementService.storeSample(root.screenName, root.backgroundKey, luminances, sampleWidth, sampleHeight)
-        }
-    }
-
     Keys.onPressed: event => {
         if (widgetLayer.handleKey(event)) {
             event.accepted = true;

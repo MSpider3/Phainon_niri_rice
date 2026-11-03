@@ -1,19 +1,18 @@
 import QtQuick
-import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell
 import qs.Common
 import qs.Services
-import "../Common/WidgetPlacement.js" as Placement
+import qs.DCommon.Widgets as DW
 
 // The Coreflame lock screen: one composition per form, laid around DMS's own password box
 // (centre of the screen) and notifications (just below it), which stay untouched.
-//   Phainon      dawn. A paper-light sky, the time high up in serif, the sun rising on the
-//                horizon inside the Oronyx dial, and Aedes Elysiae wheat along the foot.
-//   Khaslana     Bearer of Chaos. A dark wash from the left, a huge time down the left side cut
-//                by the three gold slashes of his wound, and the blocks of a breaking simulation.
-//   Flame Reaver almost nothing. A near-black screen, a quiet lowercase ledger in the corner,
-//                one violet mark, and a tally of every cycle this machine has lived.
-// Nothing here animates; the clock updates once a minute.
+//   Phainon      the sky stays open: the sun on its path at the hour, the time in a navy
+//                medallion inside a laurel wreath, the quote on a ribbon.
+//   Khaslana     a stage open on the wallpaper: valance, two drapes, a playbill with the time,
+//                the Black Tide pooled on the stage floor, footlights for the Flame-Chase.
+//   Flame Reaver shards on his crack: the cycle, the quote.
+// Solid shapes only, no blur; nothing animates; the clock updates once a minute.
 Item {
     id: root
 
@@ -22,9 +21,15 @@ Item {
 
     // "h" without an am/pm marker in the format prints 24-hour time, so format with it and drop it.
     readonly property string time: (clock.date?.toLocaleTimeString(Qt.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm ap") ?? "").replace(/\s*[ap]\.?m\.?$/i, "")
-    readonly property string ampm: SettingsData.use24HourClock ? "" : (clock.date?.toLocaleTimeString(Qt.locale(), "ap") ?? "")
-    readonly property string day: clock.date?.toLocaleDateString(Qt.locale(), "dddd, d MMMM") ?? ""
+    readonly property string day: clock.date?.toLocaleDateString(Qt.locale(), "dddd · d MMMM") ?? ""
     readonly property string period: Form.dawnPeriod(clock.date?.getHours() ?? 0)
+    // A 1920 × 1080 composition scaled to the screen, centred
+    readonly property real s: Math.min(width / 1920, height / 1080)
+    readonly property real ox: (width - 1920 * s) / 2
+    readonly property real oy: (height - 1080 * s) / 2
+
+    readonly property string battery: BatteryService.batteryAvailable ? Math.round(BatteryService.batteryLevel) + "% · " + (BatteryService.isPluggedIn ? "plugged in" : "on battery") : ""
+    readonly property string network: NetworkService.networkStatus === "ethernet" ? "Ethernet" : (NetworkService.wifiEnabled ? (NetworkService.currentWifiSSID || "Wi-Fi on") : "Wi-Fi off")
 
     visible: Form.active
 
@@ -33,570 +38,850 @@ Item {
         precision: SystemClock.Minutes
     }
 
-    // ── Phainon: dawn ──
-    Item {
-        id: dawn
+    Loader {
         anchors.fill: parent
-        visible: Form.phainon
+        active: root.visible
+        sourceComponent: Form.khaslana ? khLock : (Form.reaver ? rvLock : phLock)
+    }
 
-        readonly property color gold: Theme.secondary
-        readonly property color lapis: Theme.primary
-        readonly property color ink: Theme.surfaceText
-        readonly property real horizon: Math.round(height * 0.9)
-        readonly property real sunSize: Math.round(Math.min(width, height) * 0.62)
-        readonly property real inset: Math.round(width * 0.06)
+    // The scaled composition box, for each form's centre pieces
+    component Stage: Item {
+        x: root.ox
+        y: root.oy
+        width: 1920
+        height: 1080
+        scale: root.s
+        transformOrigin: Item.TopLeft
+    }
 
-        // Where the time goes: 0 top-centre (the default, kept on a tie or without a sample),
-        // 1 top-left, 2 top-right, 3 centre-left. Picked from DMS's cached wallpaper sample.
-        readonly property int spot: {
-            const sample = Form.phainon ? LockPlacementService.sampleFor(root.screenName, root.backgroundKey) : null;
-            const w = width, h = height;
-            if (!sample || w <= 0 || h <= 0)
-                return 0;
-            // About the size of the block (the time and date scale with the height); centre-left only
-            // when that clears DMS's password box in the middle of the screen.
-            const bw = Math.round(Math.max(w * 0.3, h * 0.48)), bh = Math.round(h * 0.34), top = Math.round(h * 0.07);
-            const spots = [[(w - bw) / 2, top], [inset, top], [w - inset - bw, top]];
-            if (inset + bw < w / 2 - 210)
-                spots.push([inset, (h - bh) / 2]);
-            const rects = spots.map(p => ({
-                        x: p[0],
-                        y: p[1],
-                        width: bw,
-                        height: bh
-                    }));
-            const ink = [Placement.luminance(lapis.r, lapis.g, lapis.b)];
-            // Own cache slot, so the stock clock placement for this screen is not overwritten.
-            return LockPlacementService.layoutFor(root.screenName + "/coreflame", sample, JSON.stringify([w, h, ink]), (luma, sw, sh) => ({
-                        spot: Math.max(0, rects.indexOf(Placement.choose(luma, sw, sh, w, h, rects, ink)))
-                    })).spot ?? 0;
+    // Phainon's status chip
+    component Chip: Rectangle {
+        id: chip
+        property string icon
+        property string label
+        visible: label !== ""
+        width: chipRow.implicitWidth + 28
+        height: 30
+        radius: 15
+        color: "#F7F3E8"
+        border.width: 1
+        border.color: "#C8B27E"
+
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 8
+
+            DW.DIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                name: chip.icon
+                size: 16
+                color: "#334786"
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: chip.label
+                font.family: Form.numerals
+                font.pixelSize: 15
+                color: "#334786"
+            }
         }
-        readonly property int align: spot === 0 ? 0 : (spot === 2 ? 1 : -1)
+    }
 
-        function along(itemWidth, columnWidth) {
-            return align < 0 ? 0 : (align > 0 ? columnWidth - itemWidth : Math.round((columnWidth - itemWidth) / 2));
-        }
+    // Khaslana's drape: dark red folds cut to a gathered edge, hemmed in gold along it
+    component Drape: Shape {
+        id: drape
+        property bool leftSide: true
+        readonly property var outline: leftSide ? [Qt.point(0, 0), Qt.point(width, 0), Qt.point(width * 0.7, height / 2), Qt.point(width, height), Qt.point(0, height), Qt.point(0, 0)] : [Qt.point(0, 0), Qt.point(width, 0), Qt.point(width, height), Qt.point(0, height), Qt.point(width * 0.3, height / 2), Qt.point(0, 0)]
+        width: 150
+        preferredRendererType: Shape.CurveRenderer
 
-        // Paper sky: light at the top where the time sits, clear in the middle, warm at the horizon.
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
+        ShapePath {
+            strokeWidth: -1
+            fillGradient: LinearGradient {
+                x1: 0
+                y1: 0
+                x2: 40
+                y2: 0
+                spread: ShapeGradient.RepeatSpread
                 GradientStop {
                     position: 0
-                    color: Theme.withAlpha(Theme.surface, 0.82)
+                    color: "#3A0A12"
                 }
                 GradientStop {
-                    position: 0.36
-                    color: Theme.withAlpha(Theme.surface, 0.18)
+                    position: 0.449
+                    color: "#3A0A12"
                 }
                 GradientStop {
-                    position: 0.72
-                    color: Theme.withAlpha(Theme.surface, 0.1)
+                    position: 0.45
+                    color: "#5A0E1C"
+                }
+                GradientStop {
+                    position: 0.749
+                    color: "#5A0E1C"
+                }
+                GradientStop {
+                    position: 0.75
+                    color: "#3A0A12"
                 }
                 GradientStop {
                     position: 1
-                    color: Theme.withAlpha(dawn.gold, 0.5)
+                    color: "#3A0A12"
+                }
+            }
+            PathPolyline {
+                path: drape.outline
+            }
+        }
+
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: "#E0B04A"
+            strokeWidth: 2
+            PathPolyline {
+                path: drape.leftSide ? [Qt.point(drape.width - 1, 0), Qt.point(drape.width * 0.7 - 1, drape.height / 2), Qt.point(drape.width - 1, drape.height)] : [Qt.point(1, 0), Qt.point(drape.width * 0.3 + 1, drape.height / 2), Qt.point(1, drape.height)]
+            }
+        }
+    }
+
+    // The Flame Reaver's shard: a violet edge and a dark face cut to the same outline
+    component Shard: Item {
+        id: shard
+        property var outline: []
+        default property alias content: face.data
+
+        function at(i) {
+            const w = width - 2 * i, h = height - 2 * i;
+            const pts = outline.map(p => Qt.point(i + p[0] * w, i + p[1] * h));
+            pts.push(pts[0]);
+            return pts;
+        }
+
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                strokeWidth: -1
+                fillGradient: LinearGradient {
+                    x1: 0
+                    y1: 0
+                    x2: shard.width
+                    y2: shard.height
+                    GradientStop {
+                        position: 0
+                        color: "#B9A8FF"
+                    }
+                    GradientStop {
+                        position: 0.5
+                        color: "#5C5478"
+                    }
+                    GradientStop {
+                        position: 1
+                        color: "#8F7BE0"
+                    }
+                }
+                PathPolyline {
+                    path: shard.at(0)
+                }
+            }
+
+            ShapePath {
+                strokeWidth: -1
+                fillColor: Qt.rgba(13 / 255, 11 / 255, 20 / 255, 0.95)
+                PathPolyline {
+                    path: shard.at(2)
                 }
             }
         }
 
-        // The rising sun, mostly below the horizon, with the emblem's eight rays and the dial around it.
         Item {
-            id: sun
-            x: Math.round((parent.width - dawn.sunSize) / 2)
-            y: Math.round(dawn.horizon - dawn.sunSize * 0.32)
-            width: dawn.sunSize
-            height: dawn.sunSize
+            id: face
+            anchors.fill: parent
+        }
+    }
 
-            Repeater {
-                model: 8
+    // One laurel branch (32 × 32 units), stroked in gold
+    component Laurel: Shape {
+        preferredRendererType: Shape.CurveRenderer
+
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: "#E2B84A"
+            // The stroke does not scale with the path: 0.35 units of the 32-unit branch
+            strokeWidth: 5.5
+            scale: Qt.size(508 / 32, 508 / 32)
+            PathSvg {
+                path: "M16 29C9 25 6 18 7 9M9 12c-3 0-4-2-4-4 3 0 4 2 4 4zM8 17c-3 1-5-1-5-3 3-1 5 1 5 3zM9.5 21.5c-2 2-5 1-6-1 3-1 5 0 6 1zM12.5 25c-1 2.5-4 3-5.5 1.5 2-2 4-2 5.5-1.5zM8 12c0-3 1.5-4.5 3.5-4.5 0 2.5-1.5 4.5-3.5 4.5zM8.5 17c.5-3 2.5-4 4.5-3.5-.5 2.5-2.5 4-4.5 3.5z"
+            }
+        }
+    }
+
+    // ── Phainon ──
+    Component {
+        id: phLock
+
+        Item {
+            Stage {
+                // The sun's path across the sky, and the sun on it at the hour (06:00 to 18:00)
+                Shape {
+                    id: arc
+                    anchors.fill: parent
+                    preferredRendererType: Shape.CurveRenderer
+                    readonly property real t: {
+                        const d = clock.date;
+                        const h = d ? d.getHours() + d.getMinutes() / 60 : 12;
+                        return Math.max(0, Math.min(1, (h - 6) / 12));
+                    }
+                    readonly property point sun: {
+                        const u = 1 - t;
+                        return Qt.point(u * u * u * 40 + 3 * u * u * t * 300 + 3 * u * t * t * 1620 + t * t * t * 1880, u * u * u * 1000 - 3 * u * u * t * 60 - 3 * u * t * t * 60 + t * t * t * 1000);
+                    }
+
+                    ShapePath {
+                        fillColor: "transparent"
+                        strokeColor: Qt.rgba(251 / 255, 249 / 255, 243 / 255, 0.75)
+                        strokeWidth: 2
+                        strokeStyle: ShapePath.DashLine
+                        dashPattern: [1.5, 4.5]
+                        PathSvg {
+                            path: "M40 1000C300 -60 1620 -60 1880 1000"
+                        }
+                    }
+                }
 
                 Rectangle {
-                    required property int index
-                    anchors.centerIn: parent
-                    width: index % 2 === 0 ? 3 : 2
-                    height: dawn.sunSize * (index % 2 === 0 ? 2.1 : 1.6)
-                    rotation: index * 22.5 - 90 + 11.25
-                    radius: 2
-                    color: Theme.withAlpha(dawn.gold, index % 2 === 0 ? 0.3 : 0.18)
+                    x: arc.sun.x - 36
+                    y: arc.sun.y - 36
+                    width: 72
+                    height: 72
+                    radius: 36
+                    color: "transparent"
+                    border.width: 2
+                    border.color: Qt.rgba(241 / 255, 218 / 255, 79 / 255, 0.6)
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 44
+                        height: 44
+                        radius: 22
+                        color: "#F1DA4F"
+                        border.width: 2
+                        border.color: "#A87A22"
+                    }
+                }
+
+                // The laurel wreath around the medallion: one branch and its mirror
+                Laurel {
+                    x: 76
+                    y: 186
+                    width: 508
+                    height: 508
+                }
+
+                Laurel {
+                    x: 76
+                    y: 186
+                    width: 508
+                    height: 508
+                    transform: Scale {
+                        origin.x: 254
+                        xScale: -1
+                    }
+                }
+
+                // The medallion: navy disc, a lighter band and a gold rim
+                Rectangle {
+                    x: 330 - 203
+                    y: 440 - 203
+                    width: 406
+                    height: 406
+                    radius: 203
+                    color: "#E2B84A"
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 395
+                        height: 395
+                        radius: 197.5
+                        color: "#2B3A78"
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 368
+                            height: 368
+                            radius: 184
+                            color: "#1F2A5C"
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: root.period
+                            font.family: "Cormorant Garamond"
+                            font.italic: true
+                            font.pixelSize: 21
+                            color: "#D9DEF5"
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: root.time
+                            font.family: Form.numerals
+                            font.pixelSize: 132
+                            color: "#FBF2D8"
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Math.min(implicitWidth, 320)
+                            fontSizeMode: Text.HorizontalFit
+                            minimumPixelSize: 12
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.day.toUpperCase()
+                            font.family: "Marcellus"
+                            font.pixelSize: 18
+                            font.letterSpacing: 2.5
+                            color: "#F1DA4F"
+                        }
+                    }
+                }
+
+                // The quote on a ribbon
+                Item {
+                    x: 80
+                    y: 712
+                    width: 500
+                    height: ribbonCol.implicitHeight + 24
+
+                    Shape {
+                        id: ribbon
+                        anchors.fill: parent
+                        preferredRendererType: Shape.CurveRenderer
+
+                        ShapePath {
+                            strokeWidth: -1
+                            fillColor: "#F7F3E8"
+                            PathPolyline {
+                                path: {
+                                    const w = ribbon.width, h = ribbon.height;
+                                    return [Qt.point(0, 0), Qt.point(w, 0), Qt.point(w * 0.94, h / 2), Qt.point(w, h), Qt.point(0, h), Qt.point(w * 0.06, h / 2), Qt.point(0, 0)];
+                                }
+                            }
+                        }
+                    }
+
+                    Column {
+                        id: ribbonCol
+                        x: 34
+                        y: 12
+                        width: parent.width - 68
+                        spacing: 4
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: "“" + Form.quote + "”"
+                            font.family: "Cormorant Garamond"
+                            font.italic: true
+                            font.pixelSize: 23
+                            lineHeight: 1.1
+                            color: "#1E2752"
+                        }
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: ("Phainon · " + Form.epithet).toUpperCase()
+                            font.family: "Chakra Petch"
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 2
+                            color: "#8A6418"
+                        }
+                    }
                 }
             }
 
+            Row {
+                anchors.right: parent.right
+                anchors.rightMargin: 28
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 22
+                spacing: 10
+
+                Chip {
+                    icon: BatteryService.isPluggedIn ? "battery_charging_full" : "battery_5_bar"
+                    label: root.battery
+                }
+
+                Chip {
+                    icon: NetworkService.wifiEnabled ? "wifi" : "wifi_off"
+                    label: root.network
+                }
+
+                Chip {
+                    icon: "local_fire_department"
+                    label: "Recurrence " + Form.cycleText
+                }
+            }
+        }
+    }
+
+    // ── Khaslana ──
+    Component {
+        id: khLock
+
+        Item {
+            id: stage
+
+            // The Black Tide pooled on the stage floor
+            CfTide {
+                x: 150
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 40
+                width: parent.width - 300
+                height: 300
+                edge: "bottom"
+                seed: 31
+                base: 0.34
+                liquid: 200
+                cubes: 30
+                cubeDepth: 300
+            }
+
+            Drape {
+                height: stage.height
+                leftSide: true
+            }
+
+            Drape {
+                anchors.right: parent.right
+                height: stage.height
+                leftSide: false
+            }
+
+            // The valance: a red pelmet with scallops hanging from its gold hem
             Rectangle {
-                anchors.fill: parent
-                radius: width / 2
+                width: parent.width
+                height: 74
                 gradient: Gradient {
                     GradientStop {
                         position: 0
-                        color: Theme.withAlpha("#FFF4D0", 0.95)
+                        color: "#6E1020"
                     }
                     GradientStop {
-                        position: 0.4
-                        color: Theme.withAlpha(dawn.gold, 0.75)
+                        position: 1
+                        color: "#4A0B16"
                     }
                 }
-            }
-
-            // The Oronyx dial: twelve marks, turned one step (30°) each hour.
-            Item {
-                anchors.centerIn: parent
-                width: parent.width + 70
-                height: width
-                rotation: (clock.date?.getHours() ?? 0) % 12 * 30
 
                 Rectangle {
-                    anchors.fill: parent
-                    radius: width / 2
-                    color: "transparent"
-                    border.width: 1
-                    border.color: Theme.withAlpha(dawn.lapis, 0.45)
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 2
+                    color: "#E0B04A"
                 }
-
-                Repeater {
-                    model: 12
-
-                    Item {
-                        required property int index
-                        anchors.fill: parent
-                        rotation: index * 30
-
-                        Rectangle {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: index === 0 ? 4 : 2
-                            height: index === 0 ? 16 : 9
-                            color: Theme.withAlpha(dawn.lapis, index === 0 ? 0.9 : 0.55)
-                        }
-                    }
-                }
-            }
-        }
-
-        // The field, misting up into the sky with no hard horizon line
-        Rectangle {
-            readonly property real rise: Math.round(dawn.height * 0.08)
-            y: dawn.horizon - rise
-            width: parent.width
-            height: parent.height - y
-            gradient: Gradient {
-                GradientStop {
-                    position: 0
-                    color: Theme.withAlpha(Theme.surface, 0)
-                }
-                GradientStop {
-                    position: 0.55
-                    color: Theme.withAlpha(Theme.surface, 0.4)
-                }
-                GradientStop {
-                    position: 1
-                    color: Theme.withAlpha(Theme.surface, 0.6)
-                }
-            }
-        }
-
-        // Aedes Elysiae
-        CfWheat {
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 4
-            width: parent.width
-            height: Math.round(parent.height - dawn.horizon - 6)
-            spacing: 14
-            color: Theme.withAlpha(dawn.gold, 0.7)
-        }
-
-        Column {
-            x: dawn.align < 0 ? dawn.inset : (dawn.align > 0 ? parent.width - dawn.inset - width : Math.round((parent.width - width) / 2))
-            y: Math.round(dawn.spot === 3 ? (parent.height - height) / 2 : parent.height * 0.07)
-            spacing: 6
-
-            Row {
-                x: dawn.along(width, parent.width)
-                spacing: 12
-
-                Text {
-                    text: root.time
-                    font.family: Form.numerals
-                    font.pixelSize: Math.round(dawn.height * 0.15)
-                    font.weight: Font.DemiBold
-                    color: dawn.lapis
-                }
-
-                Text {
-                    anchors.baseline: parent.children[0].baseline
-                    text: root.ampm.toUpperCase()
-                    font.family: Form.display(Theme.fontFamily)
-                    font.pixelSize: Math.round(dawn.height * 0.035)
-                    color: dawn.gold
-                }
-            }
-
-            Text {
-                x: dawn.along(width, parent.width)
-                text: root.day
-                font.family: Form.display(Theme.fontFamily)
-                font.pixelSize: Math.round(dawn.height * 0.03)
-                color: dawn.ink
-            }
-
-            Text {
-                x: dawn.along(width, parent.width)
-                text: "·  " + root.period.toUpperCase() + "  ·"
-                font.family: Theme.fontFamily
-                font.pixelSize: Math.round(dawn.height * 0.016)
-                font.letterSpacing: 4
-                color: Theme.withAlpha(dawn.lapis, 0.85)
             }
 
             Item {
-                width: 1
-                height: 10
-            }
-
-            // The long lines in the pool wrap, kept clear of the password box (centre) and below.
-            // On short screens, lines that would come within 7 px of the password box (top at
-            // height/2 - 27) are cut. Not in the centre-left spot, which sits beside the box.
-            Text {
-                id: quote
-                x: dawn.along(width, parent.width)
-                // Natural width from the metrics: with elide on, implicitWidth follows width (a loop).
-                width: Math.min(Math.ceil(quoteMetrics.advanceWidth(text)) + 1, Math.round(dawn.width * (dawn.align === 0 ? 0.5 : 0.3)))
-                wrapMode: Text.WordWrap
-                maximumLineCount: dawn.spot === 3 ? 99 : Math.max(1, Math.floor((dawn.height / 2 - 34 - parent.y - y) / quoteMetrics.height))
-                elide: Text.ElideRight
-                horizontalAlignment: dawn.align < 0 ? Text.AlignLeft : (dawn.align > 0 ? Text.AlignRight : Text.AlignHCenter)
-                text: "“" + Form.quote + "”"
-                font.family: Form.quoteFace(Theme.fontFamily)
-                font.pixelSize: Form.quoteFont !== "" ? 22 : 18
-                font.italic: true
-                color: Theme.withAlpha(dawn.ink, 0.8)
-
-                FontMetrics {
-                    id: quoteMetrics
-                    font: quote.font
-                }
-            }
-        }
-
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: dawn.horizon - height - 10
-
-            Text {
-                id: recurrenceLabel
-                text: "ETERNAL RECURRENCE  "
-                font.family: Theme.monoFontFamily
-                font.pixelSize: 12
-                font.letterSpacing: 3
-                color: Theme.withAlpha(dawn.lapis, 0.75)
-            }
-
-            Text {
-                anchors.baseline: recurrenceLabel.baseline
-                text: Form.cycle
-                font.family: Form.numerals
-                font.pixelSize: 15
-                font.letterSpacing: 1
-                color: Theme.withAlpha(dawn.lapis, 0.75)
-            }
-        }
-    }
-
-    // ── Khaslana: Bearer of Chaos ──
-    Item {
-        id: bearer
-        anchors.fill: parent
-        visible: Form.khaslana
-
-        readonly property color gold: Theme.primary
-        readonly property color wound: Theme.error
-        readonly property color ink: "#F5F6E6"
-        readonly property real inset: Math.round(width * 0.065)
-
-        // The "Ignite That Primal Sun" mural behind everything, softened (it is only 1000 px wide).
-        // Game art, so it lives outside the repo; without the file the wallpaper shows as before.
-        Image {
-            anchors.fill: parent
-            visible: status === Image.Ready
-            source: Form.khaslana ? "file://" + Form.stateDir + "/cinematics/khaslana-mural.png" : ""
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            layer.enabled: visible
-            layer.effect: MultiEffect {
-                blurEnabled: true
-                blur: 0.35
-                blurMax: 32
-            }
-        }
-
-        // Dark from the left, where the words stand; the wallpaper shows through on the right.
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop {
-                    position: 0
-                    color: Qt.rgba(0.02, 0.03, 0.08, 0.92)
-                }
-                GradientStop {
-                    position: 0.38
-                    color: Qt.rgba(0.02, 0.03, 0.08, 0.62)
-                }
-                GradientStop {
-                    position: 1
-                    color: Qt.rgba(0.02, 0.03, 0.08, 0.2)
-                }
-            }
-        }
-
-        // The gold rule the column hangs from
-        Rectangle {
-            x: bearer.inset - 26
-            y: column.y - 18
-            width: 4
-            height: column.height + 36
-            color: bearer.gold
-        }
-
-        Column {
-            id: column
-            x: bearer.inset
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 10
-
-            Text {
-                text: "KHASLANA  //  " + Form.epithet.toUpperCase()
-                font.family: Theme.monoFontFamily
-                font.pixelSize: 14
-                font.letterSpacing: 5
-                color: bearer.gold
-            }
-
-            Item {
-                width: timeText.contentWidth
-                height: timeText.contentHeight
-
-                // As large as the left third allows, so it never reaches the password box at the centre.
-                Text {
-                    id: timeText
-                    width: Math.round(bearer.width * 0.34) - bearer.inset
-                    fontSizeMode: Text.HorizontalFit
-                    minimumPixelSize: 40
-                    text: root.time
-                    font.family: Form.numerals
-                    font.pixelSize: Math.round(bearer.height * 0.24)
-                    font.weight: Font.Bold
-                    color: bearer.ink
-                }
-
-                // The wound: three gold slashes through the hour
-                Repeater {
-                    model: 3
-
-                    Item {
-                        required property int index
-                        x: timeText.contentWidth * 0.2 + index * 26
-                        y: timeText.contentHeight * 0.42 + index * 14
-                        width: timeText.contentWidth * 0.75
-                        height: 9
-                        rotation: -24
-
-                        Rectangle {
-                            x: 3
-                            y: 3
-                            width: parent.width
-                            height: 4
-                            color: Theme.withAlpha(bearer.wound, 0.75)
-                        }
-
-                        Rectangle {
-                            width: parent.width
-                            height: 4
-                            color: "#FBD865"
-                        }
-                    }
-                }
-            }
-
-            Text {
-                text: (root.ampm !== "" ? root.ampm.toUpperCase() + "  //  " : "") + root.day.toUpperCase() + "  //  " + root.period.toUpperCase()
-                font.family: Theme.monoFontFamily
-                font.pixelSize: 15
-                font.letterSpacing: 2
-                color: Theme.withAlpha(bearer.ink, 0.85)
-            }
-
-            Item {
-                width: 1
-                height: 18
-            }
-
-            Text {
-                width: Math.round(bearer.width * 0.3)
-                wrapMode: Text.WordWrap
-                text: Form.quote
-                font.family: Form.quoteFace(Theme.fontFamily)
-                font.pixelSize: Form.quoteFont !== "" ? 24 : 20
-                font.italic: true
-                color: bearer.ink
-            }
-
-            Row {
-                Text {
-                    id: cycleLabel
-                    text: "CYCLE "
-                    font.family: Theme.monoFontFamily
-                    font.pixelSize: 12
-                    font.letterSpacing: 3
-                    color: Theme.withAlpha(bearer.gold, 0.85)
-                }
-
-                Text {
-                    anchors.baseline: cycleLabel.baseline
-                    text: Form.cycle
-                    font.family: Form.numerals
-                    font.pixelSize: 15
-                    font.letterSpacing: 1
-                    color: Theme.withAlpha(bearer.gold, 0.85)
-                }
-
-                Text {
-                    text: "  //  THE EMBERS REFUSE TO SLEEP"
-                    font: cycleLabel.font
-                    color: cycleLabel.color
-                }
-            }
-        }
-
-        // The simulation breaking: displaced blocks around the column and at the far edge
-        Repeater {
-            // Kept to the screen edges, clear of the words and of DMS's widgets.
-            model: [[0.012, 0.16, 30, 8, 1], [0.02, 0.2, 10, 10, 0], [0.015, 0.8, 52, 5, 0], [0.03, 0.84, 12, 12, 2], [0.955, 0.08, 40, 7, 0], [0.97, 0.12, 12, 12, 1], [0.94, 0.9, 64, 5, 2], [0.965, 0.86, 18, 9, 0]]
-
-            Rectangle {
-                required property var modelData
-                x: Math.round(modelData[0] * bearer.width)
-                y: Math.round(modelData[1] * bearer.height)
-                width: modelData[2]
-                height: modelData[3]
-                color: modelData[4] === 0 ? bearer.gold : (modelData[4] === 1 ? Theme.withAlpha(bearer.wound, 0.85) : Qt.rgba(1, 1, 1, 0.45))
-            }
-        }
-
-        Text {
-            anchors.right: parent.right
-            anchors.rightMargin: Math.round(bearer.width * 0.03)
-            y: Math.round(bearer.height * 0.04)
-            text: "[ SIMULATION  ·  DESTABILISED ]"
-            font.family: Theme.monoFontFamily
-            font.pixelSize: 12
-            font.letterSpacing: 3
-            color: Theme.withAlpha(bearer.wound, 0.9)
-        }
-    }
-
-    // ── Flame Reaver: the ledger ──
-    Item {
-        id: ledger
-        anchors.fill: parent
-        visible: Form.reaver
-
-        readonly property color dim: Qt.rgba(0.78, 0.79, 0.86, 0.45)
-        readonly property color ink: Qt.rgba(0.86, 0.86, 0.84, 0.9)
-        readonly property var lines: [["time", (root.time + " " + root.ampm).trim()], ["date", root.day], ["hour", root.period], ["cycle", Form.cycleText], ["state", "locked."]]
-
-        Rectangle {
-            anchors.fill: parent
-            color: Qt.rgba(0.05, 0.05, 0.06, 0.86)
-        }
-
-        // The one violet mark
-        Rectangle {
-            x: 52
-            y: entries.y + 4
-            width: 2
-            height: entries.height - 8
-            color: Theme.live
-        }
-
-        Column {
-            id: entries
-            x: 72
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 72
-            spacing: 6
-
-            Repeater {
-                model: ledger.lines
+                y: 74
+                width: parent.width
+                height: 26
+                clip: true
 
                 Row {
-                    required property var modelData
+                    x: 2
+                    spacing: 4
 
-                    Text {
-                        width: 120
-                        text: "// " + modelData[0]
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: 16
-                        color: ledger.dim
-                    }
+                    Repeater {
+                        model: Math.ceil(stage.width / 56) + 1
 
-                    Text {
-                        text: String(modelData[1]).toLowerCase()
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: 16
-                        color: ledger.ink
+                        Rectangle {
+                            y: -26
+                            width: 52
+                            height: 52
+                            radius: 26
+                            color: "#4A0B16"
+                        }
                     }
                 }
             }
 
-            Item {
-                width: 1
-                height: 10
-            }
-
-            Text {
-                text: "> " + Form.quote.toLowerCase()
-                font.family: Theme.monoFontFamily
-                font.pixelSize: 16
-                color: Theme.live
-            }
-        }
-
-        // One stroke for every cycle this machine has lived, struck through in fives
-        Grid {
-            anchors.right: parent.right
-            anchors.rightMargin: 72
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 78
-            columns: 8
-            spacing: 12
-
-            Repeater {
-                model: Math.min(40, Math.ceil(Form.boots / 5))
-
+            // The playbill
+            Stage {
                 Item {
-                    required property int index
-                    readonly property int strokes: Math.min(5, Form.boots - index * 5)
-                    width: 26
-                    height: 18
+                    x: 1920 - 190 - 470
+                    y: 170
+                    width: 470
+                    height: bill.implicitHeight + 50
 
-                    Repeater {
-                        model: Math.min(4, parent.strokes)
-
-                        Rectangle {
-                            required property int index
-                            x: index * 6 + 2
-                            width: 2
-                            height: 18
-                            color: ledger.dim
-                        }
+                    Rectangle {
+                        x: 8
+                        y: 8
+                        width: parent.width
+                        height: parent.height
+                        color: "#8E1424"
                     }
 
                     Rectangle {
-                        visible: parent.strokes === 5
-                        anchors.centerIn: parent
-                        width: 30
-                        height: 2
-                        rotation: -28
-                        color: Theme.withAlpha(Theme.live, 0.8)
+                        anchors.fill: parent
+                        color: "#0B080B"
+                        border.width: 2
+                        border.color: "#E0B04A"
+                        clip: true
+
+                        CfCracks {
+                            anchors.fill: parent
+                            kind: "gold"
+                            trunk: 0.5
+                            branch: 0.5
+                            opacity: 0.18
+                        }
+                    }
+
+                    Column {
+                        id: bill
+                        x: 30
+                        y: 24
+                        width: parent.width - 60
+                        spacing: 4
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: ("Tonight · " + root.period).toUpperCase()
+                            font.family: "Cinzel"
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 4.8
+                            color: "#E2434E"
+                        }
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: ("Khaslana · " + Form.epithet).toUpperCase()
+                            font.family: "Cinzel"
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 2.6
+                            color: "#E0B04A"
+                        }
+
+                        Item {
+                            width: parent.width
+                            height: billTime.implicitHeight + 12
+
+                            // The red offset behind the time
+                            Text {
+                                x: billTime.x + 4
+                                y: billTime.y
+                                text: root.time
+                                font: billTime.font
+                                color: "#8E1424"
+                            }
+
+                            Text {
+                                id: billTime
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: 6
+                                text: root.time
+                                font.family: Form.numerals
+                                font.pixelSize: 140
+                                color: "#F5D27A"
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.day
+                            font.family: "Chakra Petch"
+                            font.pixelSize: 19
+                            color: "#C9B89E"
+                        }
+
+                        Item {
+                            width: 1
+                            height: 10
+                        }
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: "“" + Form.quote + "”"
+                            font.family: "Cormorant Garamond"
+                            font.italic: true
+                            font.pixelSize: 25
+                            lineHeight: 1.15
+                            color: "#F3E6CC"
+                        }
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: "KHASLANA · RECURRENCE " + Form.cycleText
+                            font.family: "Cinzel"
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 2.6
+                            color: "#E2434E"
+                        }
+                    }
+                }
+            }
+
+            // Status on a black plate, stage left
+            Rectangle {
+                x: 180
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 56
+                width: khStatus.implicitWidth + 28
+                height: khStatus.implicitHeight + 10
+                color: "#0B080B"
+                border.width: 1
+                border.color: "#8A5A2B"
+
+                Row {
+                    id: khStatus
+                    anchors.centerIn: parent
+                    spacing: 16
+
+                    Text {
+                        visible: root.battery !== ""
+                        text: root.battery
+                        font.family: "Chakra Petch"
+                        font.pixelSize: 15
+                        color: "#F3E6CC"
+                    }
+
+                    Text {
+                        text: root.network
+                        font.family: "Chakra Petch"
+                        font.pixelSize: 15
+                        color: "#C9B89E"
+                    }
+                }
+            }
+
+            // Footlights: one lit for every Coreflame of the Flame-Chase gathered
+            Rectangle {
+                x: 150
+                anchors.bottom: parent.bottom
+                width: parent.width - 300
+                height: 40
+                color: "#0B080B"
+
+                Rectangle {
+                    width: parent.width
+                    height: 2
+                    color: "#E0B04A"
+                }
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 10
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        rightPadding: 2
+                        text: "FLAME-CHASE"
+                        font.family: "Cinzel"
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 2.4
+                        color: "#E0B04A"
+                    }
+
+                    Repeater {
+                        model: 12
+
+                        Rectangle {
+                            required property int index
+                            readonly property bool lit: index < Coreflames.count
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 60
+                            height: 14
+                            color: lit ? "#C2252F" : "#3A0A12"
+                            border.width: 1
+                            border.color: lit ? "#F2C75C" : "#8E1424"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Flame Reaver ──
+    Component {
+        id: rvLock
+
+        Item {
+            Rectangle {
+                anchors.fill: parent
+                color: Qt.rgba(6 / 255, 5 / 255, 10 / 255, 0.45)
+            }
+
+            CfCracks {
+                anchors.fill: parent
+                kind: "violet"
+                opacity: 0.85
+            }
+
+            Stage {
+                Shard {
+                    x: 110
+                    y: 170
+                    width: 700
+                    height: 310
+                    outline: [[0, 0.1], [0.95, 0], [1, 0.82], [0.06, 1]]
+
+                    Column {
+                        x: 50
+                        y: 38
+                        spacing: 4
+
+                        Text {
+                            text: "// cycle"
+                            font.family: "Chakra Petch"
+                            font.pixelSize: 20
+                            color: "#B9A8FF"
+                        }
+
+                        // Two shifted copies make the glitch, drawn once with the text
+                        Item {
+                            width: cyc.implicitWidth
+                            height: cyc.implicitHeight
+
+                            Text {
+                                x: 2
+                                text: cyc.text
+                                font: cyc.font
+                                color: Qt.rgba(143 / 255, 123 / 255, 224 / 255, 0.85)
+                            }
+
+                            Text {
+                                x: -2
+                                text: cyc.text
+                                font: cyc.font
+                                color: Qt.rgba(79 / 255, 209 / 255, 197 / 255, 0.55)
+                            }
+
+                            Text {
+                                id: cyc
+                                text: Form.cycleText
+                                font.family: Form.numerals
+                                font.italic: true
+                                font.pixelSize: 108
+                                color: "#F2EEE0"
+                            }
+                        }
+
+                        Row {
+                            spacing: 10
+
+                            Text {
+                                anchors.baseline: rvDay.baseline
+                                text: root.time
+                                font.family: Form.numerals
+                                font.italic: true
+                                font.pixelSize: 30
+                                color: "#E9E7F2"
+                            }
+
+                            Text {
+                                id: rvDay
+                                text: "· " + root.day.toLowerCase()
+                                font.family: "Chakra Petch"
+                                font.pixelSize: 24
+                                color: "#E9E7F2"
+                            }
+                        }
+                    }
+                }
+
+                Shard {
+                    x: 150
+                    y: 560
+                    width: 640
+                    height: rvQuote.implicitHeight + 70
+                    outline: [[0.02, 0], [1, 0.12], [0.97, 1], [0, 0.86]]
+
+                    Column {
+                        id: rvQuote
+                        x: 44
+                        y: 28
+                        width: parent.width - 88
+                        spacing: 8
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "“" + Form.quote + "”"
+                            font.family: "Cormorant Garamond"
+                            font.italic: true
+                            font.pixelSize: 25
+                            lineHeight: 1.15
+                            color: "#E9E7F2"
+                        }
+
+                        Text {
+                            text: "// flame reaver · " + Form.epithet.toLowerCase()
+                            font.family: "Chakra Petch"
+                            font.pixelSize: 13
+                            color: "#A8A4BC"
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.right: parent.right
+                anchors.rightMargin: 28
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 24
+                width: rvStatus.implicitWidth + 28
+                height: rvStatus.implicitHeight + 12
+                color: Qt.rgba(13 / 255, 11 / 255, 20 / 255, 0.95)
+                border.width: 1
+                border.color: "#5C5478"
+
+                Row {
+                    id: rvStatus
+                    anchors.centerIn: parent
+                    spacing: 14
+
+                    Repeater {
+                        model: [[BatteryService.isPluggedIn ? "battery_charging_full" : "battery_5_bar", root.battery], [NetworkService.wifiEnabled ? "wifi" : "wifi_off", root.network]]
+
+                        Row {
+                            id: stat
+                            required property var modelData
+                            visible: modelData[1] !== ""
+                            spacing: 6
+
+                            DW.DIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: stat.modelData[0]
+                                size: 16
+                                color: "#B9A8FF"
+                            }
+
+                            Text {
+                                text: String(stat.modelData[1]).toLowerCase()
+                                font.family: "Chakra Petch"
+                                font.pixelSize: 15
+                                color: "#E9E7F2"
+                            }
+                        }
                     }
                 }
             }
