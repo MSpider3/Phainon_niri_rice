@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds the Coreflame fonts from stroke centre-lines, in the style of the in-game recurrence
 counter (monoline, angular, a dotted diamond for 0):
-  fonts/CoreflameDisplay-Regular.ttf, -Bold.ttf  full set: digits, A-Z, small-cap a-z, punctuation
+  fonts/CoreflameDisplay-Regular.ttf, -Bold.ttf  full set: digits, A-Z, a-z, punctuation
   fonts/CoreflameNumerals.ttf                     digits 0-9 only, for the system-wide fontconfig rule
 Each stroke is one quad per segment plus a disc at every point, all wound the same way, so the
 overlaps fill (non-zero). Usage: python3 tools/coreflame_font.py [out-dir]"""
@@ -15,8 +15,10 @@ from fontTools.ttLib import TTFont
 
 UPM, CAP, XH, SB, BOX = 1000, 700, 500, 70, 420  # BOX: glyph box width at width-factor 1
 ZERO_DOT = 45
+ASC, DSC = 1.45, -0.42  # lowercase ascender / descender, in x-heights (v units of the x-height box)
 
-# char: (centre-lines in a unit box, u right / v up, [(u, v, radius in half-strokes)], width factor)
+# char: (centre-lines in a unit box, u right / v up, [(u, v, radius in half-strokes[, sides])], width factor)
+# Lowercase letters are drawn in the x-height box (v = 1 is the x-height).
 G = {
     "0": ([[(0.5, 1), (0, 0.5), (0.5, 0), (1, 0.5), (0.5, 1)]], [(0.5, 0.5, None)], 1),
     "1": ([[(0.22, 0.82), (0.55, 1), (0.55, 0)]], [], 1),
@@ -58,6 +60,35 @@ G = {
     "X": ([[(0, 1), (1, 0)], [(1, 1), (0, 0)]], [], 1),
     "Y": ([[(0, 1), (0.5, 0.5), (1, 1)], [(0.5, 0.5), (0.5, 0)]], [], 1),
     "Z": ([[(0, 1), (1, 1), (0, 0), (1, 0)], [(0.25, 0.5), (0.75, 0.5)]], [], 1),
+    # Lowercase, in the x-height box: shared pointed bowls (a d g q, b p), arches (h m n), diamond i/j dots
+    "a": ([[(1, 1), (1, 0)], [(1, 0.8), (0.45, 1), (0, 0.5), (0.45, 0), (1, 0.2)]], [], 0.9),
+    "b": ([[(0, ASC), (0, 0)], [(0, 0.8), (0.55, 1), (1, 0.5), (0.55, 0), (0, 0.2)]], [], 0.9),
+    "c": ([[(1, 0.8), (0.8, 1), (0.3, 1), (0, 0.65), (0, 0.35), (0.3, 0), (0.8, 0), (1, 0.2)]], [], 0.85),
+    "d": ([[(1, ASC), (1, 0)], [(1, 0.8), (0.45, 1), (0, 0.5), (0.45, 0), (1, 0.2)]], [], 0.9),
+    "e": ([[(0, 0.5), (1, 0.5), (1, 0.72), (0.72, 1), (0.28, 1), (0, 0.72), (0, 0.28), (0.28, 0), (0.95, 0)]], [], 0.9),
+    "f": ([[(1, ASC), (0.55, ASC), (0.3, ASC - 0.2), (0.3, 0)], [(0, 1), (0.85, 1)]], [], 0.6),
+    "g": ([[(1, 1), (1, -0.2), (0.75, DSC), (0.05, DSC)], [(1, 0.8), (0.45, 1), (0, 0.5), (0.45, 0), (1, 0.2)]], [], 0.9),
+    "h": ([[(0, ASC), (0, 0)], [(0, 0.8), (0.3, 1), (0.8, 1), (1, 0.8), (1, 0)]], [], 0.9),
+    "i": ([[(0.5, 1), (0.5, 0)]], [(0.5, 1.32, 1.6, 4)], 0.3),
+    "j": ([[(0.75, 1), (0.75, -0.22), (0.4, DSC), (0, DSC)]], [(0.75, 1.32, 1.6, 4)], 0.5),
+    "k": ([[(0, ASC), (0, 0)], [(0.95, 1), (0, 0.4)], [(0.35, 0.6), (1, 0)]], [], 0.85),
+    "l": ([[(0.15, ASC), (0.15, 0.2), (0.45, 0), (1, 0)]], [], 0.45),
+    "m": ([[(0, 1), (0, 0)], [(0, 0.8), (0.15, 1), (0.36, 1), (0.5, 0.8), (0.5, 0)],
+           [(0.5, 0.8), (0.64, 1), (0.85, 1), (1, 0.8), (1, 0)]], [], 1.25),
+    "n": ([[(0, 1), (0, 0)], [(0, 0.8), (0.3, 1), (0.8, 1), (1, 0.8), (1, 0)]], [], 0.9),
+    "o": ([[(0.5, 1), (0, 0.72), (0, 0.28), (0.5, 0), (1, 0.28), (1, 0.72), (0.5, 1)]], [], 0.9),
+    "p": ([[(0, 1), (0, DSC)], [(0, 0.8), (0.55, 1), (1, 0.5), (0.55, 0), (0, 0.2)]], [], 0.9),
+    "q": ([[(1, 1), (1, DSC)], [(1, 0.8), (0.45, 1), (0, 0.5), (0.45, 0), (1, 0.2)]], [], 0.9),
+    "r": ([[(0, 1), (0, 0)], [(0, 0.7), (0.35, 1), (1, 1)]], [], 0.65),
+    "s": ([[(1, 0.85), (0.85, 1), (0.15, 1), (0, 0.85), (0, 0.65), (0.15, 0.55), (0.85, 0.45), (1, 0.35),
+            (1, 0.15), (0.85, 0), (0.15, 0), (0, 0.15)]], [], 0.85),
+    "t": ([[(0.35, 1.3), (0.35, 0.2), (0.55, 0), (0.95, 0)], [(0, 1), (0.9, 1)]], [], 0.6),
+    "u": ([[(0, 1), (0, 0.2), (0.2, 0), (0.7, 0), (1, 0.2)], [(1, 1), (1, 0)]], [], 0.9),
+    "v": ([[(0, 1), (0.5, 0), (1, 1)]], [], 0.9),
+    "w": ([[(0, 1), (0.25, 0), (0.5, 0.7), (0.75, 0), (1, 1)]], [], 1.2),
+    "x": ([[(0, 1), (1, 0)], [(1, 1), (0, 0)]], [], 0.85),
+    "y": ([[(0, 1), (0.52, 0.05)], [(1, 1), (0.25, DSC)]], [], 0.9),
+    "z": ([[(0, 1), (1, 1), (0, 0), (1, 0)]], [], 0.85),
     # Punctuation
     ".": ([], [(0.5, 0, 1.3)], 0.25),
     ",": ([[(0.55, 0), (0.35, -0.2)]], [], 0.25),
@@ -117,7 +148,7 @@ def outline(lines, dots, width, height, stroke):
             nx, ny = -(qy - py) * k, (qx - px) * k
             polys.append([(px + nx, py + ny), (qx + nx, qy + ny), (qx - nx, qy - ny), (px - nx, py - ny)])
         polys += [disc(*p, r) for p in pts]
-    polys += [disc(*at(u, v), ZERO_DOT if s is None else s * r) for u, v, s in dots]
+    polys += [disc(*at(u, v), ZERO_DOT if s is None else s * r, *n) for u, v, s, *n in dots]
     return polys, round(box + 2 * SB)
 
 
@@ -142,9 +173,8 @@ def build(out, family, style, stroke, chars):
     for ch in chars:
         if ch == " ":
             continue
-        lower = ch.islower() and ch.upper() in G
-        lines, dots, width = G[ch.upper() if lower else ch]
-        polys, adv = outline(lines, dots, width, XH if lower else CAP, stroke)
+        lines, dots, width = G[ch]
+        polys, adv = outline(lines, dots, width, XH if ch.islower() else CAP, stroke)
         name = glyph_name(ch)
         glyphs[name], advance[name], cmap[ord(ch)] = to_glyph(polys), adv, name
 
@@ -168,6 +198,13 @@ def build(out, family, style, stroke, chars):
     fb.setupPost()
     fb.save(out)
 
+    # self-check: lowercase is drawn on its own, not the capital shrunk to x-height (small caps).
+    # c o s v w x z may share the capital's shape, but must still have their own entry.
+    for c in chars:
+        if c.islower():
+            assert c in G, f"{out}: '{c}' has no lowercase drawing"
+            assert c in "cosvwxz" or G[c][0] != G[c.upper()][0], f"{out}: '{c}' is a scaled capital"
+
     font = TTFont(out)  # self-check: every requested character made it into the font
     missing = [c for c in chars if ord(c) not in font.getBestCmap()]
     assert not missing, f"{out}: missing {missing}"
@@ -176,7 +213,7 @@ def build(out, family, style, stroke, chars):
 
 if __name__ == "__main__":
     out = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / "fonts")
-    full = " " + "".join(G) + "abcdefghijklmnopqrstuvwxyz"
+    full = " " + "".join(G)
     build(out / "CoreflameDisplay-Regular.ttf", "Coreflame Display", "Regular", 62, full)
     build(out / "CoreflameDisplay-Bold.ttf", "Coreflame Display", "Bold", 100, full)
     # Digits only: anything more (space, punctuation) would replace those characters system-wide too.
