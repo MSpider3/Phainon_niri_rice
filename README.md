@@ -9,7 +9,7 @@ Pick a form and the whole desktop follows: colours, shapes, fonts, wallpaper, GT
 | Form | Mood |
 |---|---|
 | **Phainon** | Light. Paper, lapis blue and a bit of sun gold. Soft round corners. |
-| **Khaslana** | Navy-black and gold, sharp cut corners, a little glitchy on purpose. |
+| **Khaslana** | Obsidian black, gold and blood red. Sharp cut corners, small golden-blood marks, the Black Tide dripping under every panel, a little glitchy on purpose. |
 | **Flame Reaver** | Charcoal, bone and one violet. Quiet, lowercase, text-heavy, almost no animation; panels hang like his torn cloak. |
 
 ## What it looks like
@@ -26,6 +26,10 @@ Pick a form and the whole desktop follows: colours, shapes, fonts, wallpaper, GT
 |---|---|
 | ![Phainon launcher](screenshots/phainon-launcher.jpg) | ![Phainon power menu](screenshots/phainon-power.jpg) |
 
+The dashboard's full views (music, messages, screen time, network, wallpapers):
+
+![Phainon dashboard views](screenshots/phainon-views.jpg)
+
 ### Khaslana
 
 ![Khaslana desktop](screenshots/khaslana-desktop.jpg)
@@ -37,6 +41,10 @@ Pick a form and the whole desktop follows: colours, shapes, fonts, wallpaper, GT
 | Launcher | Power menu |
 |---|---|
 | ![Khaslana launcher](screenshots/khaslana-launcher.jpg) | ![Khaslana power menu](screenshots/khaslana-power.jpg) |
+
+The dashboard's full views (music, messages, screen time, network, wallpapers):
+
+![Khaslana dashboard views](screenshots/khaslana-views.jpg)
 
 ### Flame Reaver
 
@@ -50,10 +58,14 @@ Pick a form and the whole desktop follows: colours, shapes, fonts, wallpaper, GT
 |---|---|
 | ![Flame Reaver launcher](screenshots/reaver-launcher.jpg) | ![Flame Reaver power menu](screenshots/reaver-power.jpg) |
 
+The dashboard's full views (music, messages, screen time, network, wallpapers):
+
+![Flame Reaver dashboard views](screenshots/reaver-views.jpg)
+
 ## What you get
 
 - **A clock set into the wallpaper.** A large clock stands behind each form's character: whatever is near in the picture (him, his cape, the tendrils) passes in front of it. Each form adds one quiet piece in the same layer: Phainon a sun path across the sky, Khaslana the twelve Flame-Chase embers, the Flame Reaver a three-line readout of weather, battery and what's playing.
-- **No bar.** A dynamic island at the top centre (clock, date, weather, what's playing, notifications), with a small workspace tab on the left and a status tab on the right.
+- **No bar.** A dynamic island at the top centre (clock, date, weather, what's playing, notifications), with a small workspace tab on the left and a status tab on the right. In Khaslana the island wears a pair of small golden wings.
 - **Island pop-ups.** Volume, brightness, caps lock, mic mute, touchpad and workspace changes show for a moment in the island instead of DMS's own pop-ups. Each one follows its on/off switch in DMS Settings. With Do not disturb set to end at a time, the island says until when ("Muted until 18:00").
 - **Dashboard** that drops out of the island: clock, system load, calendar with your events, flame-chase, weather, notifications, music, network and screen time on one page. Each card opens its own full view, drawn in the form's own frame (Phainon's parchment sheet, Khaslana's gold-seamed mosaic over the Black Tide, the Flame Reaver's shards). The clock opens a full time view: the date in full, a world clock on a small globe (add cities by searching), a timer and a stopwatch. The wallpaper picker sits under the Flame-Chase card.
 - **Notifications live in the dashboard.** The island bell and the notifications keybind open the dashboard's messages view. It lists the messages still open first, then the ones DMS saved to its history, grouped by app; "Clear all" clears both. A notification that arrives while a panel is open shows along that panel's top edge.
@@ -85,6 +97,16 @@ You need:
 **Fair warning:** I built this for my own laptop (Fedora, niri, one 1080p screen) and that is the only machine it has been used on. It works for me; it might not work the same on yours. Different distro, screen size, DMS version or hardware can all trip it up, so treat it as something to try and tinker with, not a polished release.
 
 This is built on the DMS 2.0 interface. On another DMS version it may not load. If that happens the safety net simply drops you back to stock DMS.
+
+## Known issues
+
+- **"Clear all" also wipes saved history.** In the messages view it dismisses the open notifications and deletes the ones DMS saved to its history. There is no undo.
+- **Message bodies show one line.** Longer notifications are cut off in the messages view; open the app to read the rest.
+- **Your location shows in two views.** The weather view names your city (DMS looks it up from your IP) and the time view shows your time zone. Mind that before you share screenshots.
+- **Screen time colours leak into DMS Settings.** The weekly chart takes the form's colours, and DMS Settings' screen time page uses the same chart, so it shows them there too.
+- **Not everything has been seen on screen.** The lock screen's golden-blood marks (Khaslana) were only checked in code, not on a real lock.
+- **The sandbox can crash after many reloads.** The nested test copy (`dev/run-nested.sh`) crashed once after a long run of hot reloads and went blank. Close it and start it again.
+- **One machine only.** See the fair warning above: Fedora, niri, one 1080p laptop screen.
 
 ## Install
 

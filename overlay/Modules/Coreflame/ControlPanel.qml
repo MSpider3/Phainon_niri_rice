@@ -480,7 +480,7 @@ PanelWindow {
                 anchors.fill: parent
                 anchors.margins: 1
                 source: {
-                    const img = PortalService.profileImage ?? "";
+                    const img = Quickshell.env("COREFLAME_DEMO") === "1" ? "" : (PortalService.profileImage ?? "");
                     return img === "" ? "" : (img.startsWith("/") ? "file://" + img : img);
                 }
                 sourceSize: Qt.size(96, 96)
@@ -523,7 +523,8 @@ PanelWindow {
                 Text {
                     id: who
                     text: {
-                        const n = UserInfoService.fullName || UserInfoService.username || "NeiKos496";
+                        // screenshot sandboxes (COREFLAME_DEMO=1) show the demo name, never the real one
+                        const n = Quickshell.env("COREFLAME_DEMO") === "1" ? "NeiKos496" : (UserInfoService.fullName || UserInfoService.username || "NeiKos496");
                         return panelWin.rv ? n.toLowerCase() : n;
                     }
                     font.family: panelWin.kh ? "Cinzel" : (panelWin.ph ? "Marcellus" : "Chakra Petch")
