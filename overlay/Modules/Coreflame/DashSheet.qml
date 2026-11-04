@@ -148,8 +148,10 @@ Item {
             width: sheet.width
             height: sheet.gridBottom
             kind: "gold"
-            trunk: 0.7
-            branch: 0.7
+            // thin and dim: veins in the obsidian, not bars across the numbers
+            trunk: 0.35
+            branch: 0.4
+            opacity: 0.6
         }
     }
 

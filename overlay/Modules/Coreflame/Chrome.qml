@@ -81,8 +81,7 @@ PanelWindow {
             const key = /^bluetooth/i.test(s) ? "bt" : /^(wifi|network|ethernet|vpn|connectivity)/i.test(s) ? "wifi" : /^mic/i.test(s) ? "mic" : /^(audio|sound|volume)/i.test(s) ? "out" : /^(battery|power)/i.test(s) ? "battery" : /^(system|apps)/i.test(s) ? "apps" : "";
             if (item && key && item.section !== key)
                 item.toggleSection(key);
-        }
-        else if (what === "close")
+        } else if (what === "close")
             item?.close();
         else
             item?.toggle();
@@ -1715,6 +1714,34 @@ PanelWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             height: island.height
             note: island.toast
+        }
+    }
+
+    // Khaslana: a gold wing on each side of the island, pointing in (the v3 mockup's #wing).
+    // Outside the island because it clips; outside the input mask, so clicks pass through.
+    Repeater {
+        model: Form.khaslana && !win.raised ? [-1, 1] : []
+
+        Shape {
+            required property int modelData
+            width: 62
+            height: 30
+            x: modelData < 0 ? island.x - width - 4 : island.x + island.width + 4
+            y: Math.round((win.strip - height) / 2) - 2
+            transform: Scale {
+                origin.x: 31
+                xScale: -modelData
+            }
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                fillColor: "#E0B04A"
+                strokeColor: "transparent"
+                scale: Qt.size(62 / 60, 1)
+                PathSvg {
+                    path: "M58 15C44 15 34 6 20 2c6 5 9 8 10 11C22 10 12 9 2 12c9 1 16 3 22 6-7 0-14 1-20 5 9-1 17-1 25 0-5 2-9 4-12 7 10-3 20-5 41-15z"
+                }
+            }
         }
     }
 

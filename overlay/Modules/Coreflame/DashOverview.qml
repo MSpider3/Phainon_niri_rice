@@ -354,6 +354,9 @@ Item {
                 width: 1400
                 height: 538
                 kind: "gold"
+                trunk: 0.45
+                branch: 0.5
+                opacity: 0.65
             }
 
             // The Black Tide spilling off the bottom edge
