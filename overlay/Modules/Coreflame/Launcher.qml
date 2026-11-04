@@ -11,6 +11,7 @@ import qs.Widgets
 import qs.DCommon.Widgets as DW
 import qs.Modals.DLauncherV2
 import "../../Common/LauncherKeybinds.js" as LauncherKeybinds
+import "Numerals.js" as Numerals
 
 // "Let There Be Light": the launcher, in a fixed frame per form (the v3 mockup).
 //   Phainon: the oracle, an arch 720 x 800 hanging from the island on a stem.
@@ -132,18 +133,7 @@ PanelWindow {
 
     // Khaslana's act numbers; plain digits from 40 on
     function roman(n) {
-        if (n >= 40 || n < 1)
-            return String(n);
-        const r = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
-        let out = "";
-        let v = n;
-        for (const [k, s] of r) {
-            while (v >= k) {
-                out += s;
-                v -= k;
-            }
-        }
-        return out;
+        return Numerals.roman(n);
     }
 
     // The icon string AppIconRenderer understands, as stock's LauncherRow builds it
