@@ -350,18 +350,21 @@ PanelWindow {
             // ── frames ──
 
             // Phainon: an arch of paper
-            Shape {
-                visible: launcher.ph
+            Loader {
+                active: launcher.ph
                 anchors.fill: parent
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeColor: launcher.pal.rim2
-                    strokeWidth: 1
-                    fillColor: launcher.pal.paper
-                    PathSvg {
-                        path: {
-                            const w = face.width, h = face.height;
-                            return `M0.5 150 A${w / 2 - 0.5} 149.5 0 0 1 ${w / 2} 0.5 A${w / 2 - 0.5} 149.5 0 0 1 ${w - 0.5} 150 L${w - 0.5} ${h - 22} Q${w - 0.5} ${h - 0.5} ${w - 22} ${h - 0.5} L22 ${h - 0.5} Q0.5 ${h - 0.5} 0.5 ${h - 22} Z`;
+                sourceComponent: Shape {
+                    anchors.fill: parent
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        strokeColor: launcher.pal.rim2
+                        strokeWidth: 1
+                        fillColor: launcher.pal.paper
+                        PathSvg {
+                            path: {
+                                const w = face.width, h = face.height;
+                                return `M0.5 150 A${w / 2 - 0.5} 149.5 0 0 1 ${w / 2} 0.5 A${w / 2 - 0.5} 149.5 0 0 1 ${w - 0.5} 150 L${w - 0.5} ${h - 22} Q${w - 0.5} ${h - 0.5} ${w - 22} ${h - 0.5} L22 ${h - 0.5} Q0.5 ${h - 0.5} 0.5 ${h - 22} Z`;
+                            }
                         }
                     }
                 }
@@ -369,111 +372,120 @@ PanelWindow {
 
             // Khaslana: a black drawer, a gold rule with a red shadow down its edge, and red blocks
             // bleeding from the left
-            Rectangle {
-                visible: launcher.kh
-                x: face.width - 2
-                width: 7
-                height: face.height
-                color: "#8E1424"
+            Loader {
+                active: launcher.kh
+                sourceComponent: Rectangle {
+                    x: face.width - 2
+                    width: 7
+                    height: face.height
+                    color: "#8E1424"
+                }
             }
 
-            Rectangle {
-                visible: launcher.kh
-                width: face.width
-                height: face.height
-                color: "#0B080B"
+            Loader {
+                active: launcher.kh
+                sourceComponent: Rectangle {
+                    width: face.width
+                    height: face.height
+                    color: "#0B080B"
 
-                Rectangle {
-                    anchors.right: parent.right
-                    width: 2
-                    height: parent.height
-                    color: "#E0B04A"
-                }
-
-                Column {
-                    id: bleed
-                    spacing: 3
-                    // The mockup's block sequence (as CfTide), turned to run down the edge
-                    readonly property var blocks: {
-                        const out = [];
-                        let x = 7 + 9 * 13;
-                        for (let i = 0; i < 60; i++) {
-                            x = (x * 73 + 19) % 101;
-                            out.push(6 + x % 14);
-                        }
-                        return out;
+                    Rectangle {
+                        anchors.right: parent.right
+                        width: 2
+                        height: parent.height
+                        color: "#E0B04A"
                     }
 
-                    Repeater {
-                        model: bleed.blocks
+                    Column {
+                        id: bleed
+                        spacing: 3
+                        // The mockup's block sequence (as CfTide), turned to run down the edge
+                        readonly property var blocks: {
+                            const out = [];
+                            let x = 7 + 9 * 13;
+                            for (let i = 0; i < 60; i++) {
+                                x = (x * 73 + 19) % 101;
+                                out.push(6 + x % 14);
+                            }
+                            return out;
+                        }
 
-                        Rectangle {
-                            required property int index
-                            required property var modelData
-                            width: modelData
-                            height: (face.height - 3 * 59) / 60
-                            color: (index + 1) % 11 === 0 ? "#E0B04A" : (index + 1) % 7 === 0 ? "#3A0A12" : (index + 1) % 3 === 0 ? "#C2252F" : "#8E1424"
+                        Repeater {
+                            model: bleed.blocks
+
+                            Rectangle {
+                                required property int index
+                                required property var modelData
+                                width: modelData
+                                height: (face.height - 3 * 59) / 60
+                                color: (index + 1) % 11 === 0 ? "#E0B04A" : (index + 1) % 7 === 0 ? "#3A0A12" : (index + 1) % 3 === 0 ? "#C2252F" : "#8E1424"
+                            }
                         }
                     }
                 }
             }
 
             // Flame Reaver: a shard with a jagged top, and his fractures
-            Shape {
-                id: console_
-                visible: launcher.rv
+            Loader {
+                active: launcher.rv
                 anchors.fill: parent
-                preferredRendererType: Shape.CurveRenderer
-                // The jagged top edge: [x share of width, y in px]
-                readonly property var edgePts: [[0, 34], [0.18, 0], [0.31, 28], [0.5, 0], [0.66, 34], [0.83, 6], [1, 28]]
-                function poly(inset) {
-                    const w = face.width, h = face.height;
-                    const pts = edgePts.map(p => Qt.point(Math.min(w - inset, Math.max(inset, p[0] * w)), p[1] + inset));
-                    pts.push(Qt.point(w - inset, h), Qt.point(inset, h), pts[0]);
-                    return pts;
-                }
+                sourceComponent: Shape {
+                    id: console_
+                    anchors.fill: parent
+                    preferredRendererType: Shape.CurveRenderer
+                    // The jagged top edge: [x share of width, y in px]
+                    readonly property var edgePts: [[0, 34], [0.18, 0], [0.31, 28], [0.5, 0], [0.66, 34], [0.83, 6], [1, 28]]
+                    function poly(inset) {
+                        const w = face.width, h = face.height;
+                        const pts = edgePts.map(p => Qt.point(Math.min(w - inset, Math.max(inset, p[0] * w)), p[1] + inset));
+                        pts.push(Qt.point(w - inset, h), Qt.point(inset, h), pts[0]);
+                        return pts;
+                    }
 
-                ShapePath {
-                    strokeWidth: -1
-                    fillGradient: LinearGradient {
-                        x1: 0
-                        y1: 0
-                        x2: face.width
-                        y2: face.height
-                        GradientStop {
-                            position: 0
-                            color: "#B9A8FF"
+                    ShapePath {
+                        strokeWidth: -1
+                        fillGradient: LinearGradient {
+                            x1: 0
+                            y1: 0
+                            x2: face.width
+                            y2: face.height
+                            GradientStop {
+                                position: 0
+                                color: "#B9A8FF"
+                            }
+                            GradientStop {
+                                position: 0.5
+                                color: "#5C5478"
+                            }
+                            GradientStop {
+                                position: 1
+                                color: "#8F7BE0"
+                            }
                         }
-                        GradientStop {
-                            position: 0.5
-                            color: "#5C5478"
-                        }
-                        GradientStop {
-                            position: 1
-                            color: "#8F7BE0"
+                        PathPolyline {
+                            path: console_.poly(0)
                         }
                     }
-                    PathPolyline {
-                        path: console_.poly(0)
-                    }
-                }
 
-                ShapePath {
-                    strokeWidth: -1
-                    fillColor: Qt.rgba(13 / 255, 11 / 255, 20 / 255, 0.95)
-                    PathPolyline {
-                        path: console_.poly(2)
+                    ShapePath {
+                        strokeWidth: -1
+                        fillColor: Qt.rgba(13 / 255, 11 / 255, 20 / 255, 0.95)
+                        PathPolyline {
+                            path: console_.poly(2)
+                        }
                     }
                 }
             }
 
-            CfCracks {
-                visible: launcher.rv
-                y: 40
-                width: face.width
-                height: face.height - 40
-                kind: "violet"
-                opacity: 0.35
+            Loader {
+                active: launcher.rv
+                sourceComponent: CfCracks {
+                    y: 40
+                    width: face.width
+                    height: face.height - 40
+                    kind: "violet"
+                    opacity: 0.35
+                }
             }
 
             // ── crowns and titles ──
