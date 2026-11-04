@@ -348,18 +348,26 @@ PanelWindow {
         color: panelWin.pal.cap
     }
 
-    // The menu beneath a switch, built only while open
-    component MenuSlot: Loader {
+    // The menu beneath a switch: slides out from under it, built only while open or closing
+    component MenuSlot: CcSlide {
         id: slot
         property var keys: []
         property bool withProfile: true
+        readonly property string now: open ? panelWin.section : ""
+        // The menu shown here, kept while it slides back in after the section moved on. Moving
+        // between keys of one slot (Khaslana's row of tiles) swaps the menu at once, unanimated.
+        property string held: now
+        onNowChanged: {
+            if (now !== "")
+                held = now;
+        }
+        lay: panelWin.lay
         width: parent ? parent.width : 0
-        active: keys.includes(panelWin.section)
-        visible: active
+        open: keys.includes(panelWin.section)
         sourceComponent: Component {
             CcMenu {
                 cc: panelWin
-                key: panelWin.section
+                key: slot.held
                 withProfile: slot.withProfile
             }
         }
