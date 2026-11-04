@@ -95,6 +95,7 @@ The dashboard's full views (music, messages, screen time, network, wallpapers):
 **Extras**
 
 - **Your apps follow the form:** GTK apps, kitty, Fastfetch, btop, a Starship prompt with the cycle count, and (through DMS) Zed, Vesktop, Qt apps, Firefox and more. See [SETUP.md](SETUP.md).
+- **GTK windows in the form's style,** including the file picker apps open for "Open" and "Save": parchment, lapis and round corners (Phainon), obsidian with a red title bar, gold seams and square corners (Khaslana), or ash with thin violet lines (Flame Reaver).
 - **Boot splash** (optional, needs sudo): one form's splash, or the "Eternal Recurrence" cinematic with this boot's cycle number. See [SETUP.md](SETUP.md#5-boot-splash-optional-needs-sudo-and-login-screen).
 - **Small nods to the story**, like the cycle counter that starts at 33,550,336 and goes up by one each boot.
 - **A safety net.** If the shell ever fails to start, it puts stock DMS back by itself.
@@ -123,6 +124,7 @@ This is built on the DMS 2.0 interface. On another DMS version it may not load. 
 - **Screen time colours leak into DMS Settings.** The weekly chart takes the form's colours, and DMS Settings' screen time page uses the same chart, so it shows them there too.
 - **Not everything has been seen on screen.** The lock screen's golden-blood marks (Khaslana) were only checked in code, not on a real lock.
 - **The sandbox can crash after many reloads.** The nested test copy (`dev/run-nested.sh`) crashed once after a long run of hot reloads and went blank. Close it and start it again.
+- **GTK windows only go so far.** GTK can't draw cut corners or torn edges, so apps and file pickers get the form's colours, title font, borders and corners, not the shell's exact shapes. A GTK app that's already open keeps the old form's look until you reopen it. DMS's own file browser (used in DMS Settings) is the one drawn exactly like the mockup.
 - **One machine only.** See the fair warning above: Fedora, niri, one 1080p laptop screen.
 
 ## Install

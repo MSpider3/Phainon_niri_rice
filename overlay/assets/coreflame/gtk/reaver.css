@@ -1,0 +1,125 @@
+/* Coreflame, Flame Reaver: GTK 3 and GTK 4 apps (file pickers, Files, settings windows).
+ * Loaded after DMS's dank-colors.css, so these colours win. Charcoal ash, bone text, one violet;
+ * square corners and thin rules. Same palette as the shell's panels (CfInk, DashCard). */
+
+@define-color accent_color #B9A8FF;
+@define-color accent_bg_color #8F7BE0;
+@define-color accent_fg_color #0B0A10;
+@define-color window_bg_color #0D0B14;
+@define-color window_fg_color #E9E7F2;
+@define-color view_bg_color #0B0A10;
+@define-color view_fg_color #E9E7F2;
+@define-color headerbar_bg_color #0D0B14;
+@define-color headerbar_fg_color #B9A8FF;
+@define-color headerbar_backdrop_color #0B0A10;
+@define-color sidebar_bg_color #0B0A10;
+@define-color sidebar_fg_color #E9E7F2;
+@define-color sidebar_backdrop_color #0B0A10;
+@define-color secondary_sidebar_bg_color #0B0A10;
+@define-color secondary_sidebar_fg_color #E9E7F2;
+@define-color card_bg_color #12101A;
+@define-color card_fg_color #E9E7F2;
+@define-color popover_bg_color #0D0B14;
+@define-color popover_fg_color #E9E7F2;
+@define-color dialog_bg_color #0D0B14;
+@define-color dialog_fg_color #E9E7F2;
+@define-color destructive_bg_color #F07A85;
+@define-color destructive_fg_color #0B0A10;
+@define-color error_color #F07A85;
+
+/* square corners everywhere */
+decoration, window, window.csd, button, entry, spinbutton, combobox button, popover, popover > contents,
+menu, .menu, tooltip, list, row, switch, switch > slider, scale trough, progressbar trough,
+progressbar progress, .card, frame > border {
+    border-radius: 0;
+}
+
+/* the title bar: flat ash over one thin rule */
+headerbar, .titlebar {
+    background-color: #0D0B14;
+    background-image: none;
+    border-bottom: 1px solid #2C2840;
+    box-shadow: none;
+}
+
+headerbar .title, .titlebar .title {
+    font-family: "Chakra Petch";
+    font-weight: 600;
+    color: #B9A8FF;
+}
+
+/* the path bar's crumbs as thin-edged shards */
+.path-bar button, .linked > button {
+    background-color: #0B0A10;
+    border: 1px solid #2C2840;
+}
+
+.sidebar, placessidebar, .navigation-sidebar, .sidebar-pane {
+    background-color: #0B0A10;
+    border-right: 1px solid #2C2840;
+}
+
+/* selection: a faint violet wash and a violet line on the left */
+row:selected, columnview > listview > row:selected {
+    background-color: rgba(185, 168, 255, 0.14);
+    background-image: none;
+    color: #E9E7F2;
+    box-shadow: inset 2px 0 #B9A8FF;
+}
+
+/* GTK 3 lists paint each cell on its own, so the line would repeat per column */
+.view:selected, treeview.view:selected, iconview:selected {
+    background-color: #221E33;
+    background-image: none;
+    box-shadow: none;
+    color: #E9E7F2;
+}
+
+entry, spinbutton {
+    background-color: #0B0A10;
+    border: 1px solid #2C2840;
+}
+
+entry:focus, entry:focus-within, spinbutton:focus-within {
+    border-color: #8F7BE0;
+    box-shadow: none;
+}
+
+/* the main action (Open, Select, Save): a violet outline, filled faintly on hover */
+button.suggested-action, button.default {
+    background-color: transparent;
+    background-image: none;
+    color: #B9A8FF;
+    border: 1px solid #B9A8FF;
+    box-shadow: none;
+}
+
+button.suggested-action:hover {
+    background-color: rgba(185, 168, 255, 0.14);
+}
+
+button.destructive-action {
+    background-color: transparent;
+    background-image: none;
+    color: #F07A85;
+    border: 1px solid #F07A85;
+}
+
+popover, popover > contents, menu, .menu {
+    border: 1px solid #2C2840;
+}
+
+tooltip, tooltip.background {
+    background-color: #0B0A10;
+    border: 1px solid #2C2840;
+    color: #E9E7F2;
+}
+
+treeview.view header button, columnview > header > button {
+    border-bottom: 1px solid #2C2840;
+    color: #6E6A84;
+}
+
+paned > separator, separator {
+    background-color: #2C2840;
+}

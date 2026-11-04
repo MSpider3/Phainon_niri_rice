@@ -1,0 +1,126 @@
+/* Coreflame, Khaslana: GTK 3 and GTK 4 apps (file pickers, Files, settings windows).
+ * Loaded after DMS's dank-colors.css, so these colours win. Obsidian, gold seams, blood red;
+ * square corners. Same palette as the shell's panels (CfInk, CfFrame). */
+
+@define-color accent_color #F5D27A;
+@define-color accent_bg_color #8E1424;
+@define-color accent_fg_color #F5D27A;
+@define-color window_bg_color #0B080B;
+@define-color window_fg_color #F3E6CC;
+@define-color view_bg_color #0B080B;
+@define-color view_fg_color #F3E6CC;
+@define-color headerbar_bg_color #140A0D;
+@define-color headerbar_fg_color #F5D27A;
+@define-color headerbar_backdrop_color #0B080B;
+@define-color sidebar_bg_color #120A0D;
+@define-color sidebar_fg_color #F3E6CC;
+@define-color sidebar_backdrop_color #0B080B;
+@define-color secondary_sidebar_bg_color #0B080B;
+@define-color secondary_sidebar_fg_color #F3E6CC;
+@define-color card_bg_color #160D10;
+@define-color card_fg_color #F3E6CC;
+@define-color popover_bg_color #0B080B;
+@define-color popover_fg_color #F3E6CC;
+@define-color dialog_bg_color #0B080B;
+@define-color dialog_fg_color #F3E6CC;
+@define-color destructive_bg_color #E2434E;
+@define-color destructive_fg_color #0B080B;
+@define-color error_color #E2434E;
+
+/* square corners everywhere */
+decoration, window, window.csd, button, entry, spinbutton, combobox button, popover, popover > contents,
+menu, .menu, tooltip, list, row, switch, switch > slider, scale trough, progressbar trough,
+progressbar progress, .card, frame > border {
+    border-radius: 0;
+}
+
+/* the title bar: the red header block over a gold seam */
+headerbar, .titlebar {
+    background-color: #140A0D;
+    background-image: linear-gradient(to bottom, #3A0A12, #0B080B);
+    border-bottom: 1px solid #E0B04A;
+    box-shadow: none;
+}
+
+headerbar .title, .titlebar .title {
+    font-family: "Cinzel";
+    font-weight: bold;
+    color: #F5D27A;
+}
+
+/* the path bar's crumbs as small obsidian plates */
+.path-bar button, .linked > button {
+    background-color: #120A0D;
+    border: 1px solid #5A3A1E;
+}
+
+/* sidebars: a darker plate split off by a bronze rule */
+.sidebar, placessidebar, .navigation-sidebar, .sidebar-pane {
+    background-color: #120A0D;
+    border-right: 1px solid #5A3A1E;
+}
+
+/* selection: red rising out of the dark, gold text, a gold seam on the left */
+row:selected, columnview > listview > row:selected {
+    background-color: #3A0A12;
+    background-image: linear-gradient(to right, #3A0A12, #0B080B);
+    color: #F5D27A;
+    box-shadow: inset 2px 0 #E0B04A;
+}
+
+/* GTK 3 lists paint each cell on its own, so a gradient or seam would repeat per column */
+.view:selected, treeview.view:selected, iconview:selected {
+    background-color: #3A0A12;
+    background-image: none;
+    box-shadow: none;
+    color: #F5D27A;
+}
+
+entry, spinbutton {
+    background-color: #0B080B;
+    border: 1px solid #5A3A1E;
+}
+
+entry:focus, entry:focus-within, spinbutton:focus-within {
+    border-color: #E0B04A;
+    box-shadow: none;
+}
+
+/* the main action (Open, Select, Save): Khaslana's red button with a gold edge */
+button.suggested-action, button.default {
+    background-color: #8E1424;
+    background-image: linear-gradient(to bottom, #B4202E, #8E1424);
+    color: #F5D27A;
+    border: 1px solid #E0B04A;
+    box-shadow: none;
+}
+
+button.suggested-action:hover {
+    background-image: linear-gradient(to bottom, #C8283A, #9E1828);
+}
+
+button.destructive-action {
+    background-color: #E2434E;
+    background-image: none;
+    color: #0B080B;
+}
+
+popover, popover > contents, menu, .menu {
+    border: 1px solid #E0B04A;
+}
+
+tooltip, tooltip.background {
+    background-color: #0B080B;
+    border: 1px solid #E0B04A;
+    color: #F3E6CC;
+}
+
+/* the gold seam under column headers and between panes */
+treeview.view header button, columnview > header > button {
+    border-bottom: 1px solid #5A3A1E;
+    color: #C9B89E;
+}
+
+paned > separator, separator {
+    background-color: #5A3A1E;
+}

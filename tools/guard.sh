@@ -50,14 +50,22 @@ json.dump(keep, open(out, "w"), indent=2)
 EOF
     ;;
 
-# While a form is showing, GTK 4 apps use plain libadwaita recoloured by DMS, so they can follow
-# light and dark. Your own gtk.css (a full theme) is kept aside and put back on the way out.
+# While a form is showing, GTK 3 and 4 apps use DMS's colours plus the form's own stylesheet
+# (gtk.css imports dank-colors.css, then coreflame-form.css, a link to this form's sheet).
+# Your own gtk.css is kept aside and put back on the way out.
+#   guard.sh gtk-on [form-stylesheet]
 gtk-on)
-    css="$home_cfg/gtk-4.0/gtk.css"
-    if [ -f "$css" ] && ! grep -q "coreflame" "$css"; then
-        [ -f "$state/gtk4-gtk.css.before" ] || cp "$css" "$state/gtk4-gtk.css.before"
-        printf '/* coreflame: plain libadwaita with the form colours; your own file is in %s */\n@import url("dank-colors.css");\n' "$state/gtk4-gtk.css.before" > "$css"
-    fi
+    for v in 3 4; do
+        dir="$home_cfg/gtk-$v.0"
+        css="$dir/gtk.css"
+        mkdir -p "$dir"
+        if [ -f "$css" ] && ! grep -q "coreflame" "$css"; then
+            [ -f "$state/gtk$v-gtk.css.before" ] || cp "$css" "$state/gtk$v-gtk.css.before"
+        fi
+        grep -q "coreflame-form.css" "$css" 2> /dev/null ||
+            printf '/* coreflame: the form colours and shapes; your own file is in %s */\n@import url("dank-colors.css");\n@import url("coreflame-form.css");\n' "$state/gtk$v-gtk.css.before" > "$css"
+        [ -n "${2:-}" ] && [ -f "$2" ] && ln -sfn "$2" "$dir/coreflame-form.css"
+    done
     ;;
 
 gtk-off)
@@ -67,9 +75,16 @@ gtk-off)
     if [ -L "$home_cfg/fastfetch/config.jsonc" ] && [ -f "$state/fastfetch-config.jsonc.before" ]; then
         rm -f "$home_cfg/fastfetch/config.jsonc" && cp "$state/fastfetch-config.jsonc.before" "$home_cfg/fastfetch/config.jsonc"
     fi
-    if [ -f "$state/gtk4-gtk.css.before" ]; then
-        cp "$state/gtk4-gtk.css.before" "$home_cfg/gtk-4.0/gtk.css" && rm -f "$state/gtk4-gtk.css.before"
-    fi
+    for v in 3 4; do
+        dir="$home_cfg/gtk-$v.0"
+        if [ -f "$state/gtk$v-gtk.css.before" ]; then
+            cp "$state/gtk$v-gtk.css.before" "$dir/gtk.css" && rm -f "$state/gtk$v-gtk.css.before"
+        elif grep -q "coreflame" "$dir/gtk.css" 2> /dev/null; then
+            # nothing of yours was there: leave DMS's plain colour import
+            printf '@import url("dank-colors.css");\n' > "$dir/gtk.css"
+        fi
+        rm -f "$dir/coreflame-form.css"
+    done
     ;;
 
 check)
@@ -214,7 +229,7 @@ EOF
     ;;
 
 *)
-    echo "usage: $0 snapshot | preselect | check | fallback [reason] | gtk-on | gtk-off" >&2
+    echo "usage: $0 snapshot | preselect | check | fallback [reason] | gtk-on [stylesheet] | gtk-off" >&2
     exit 2
     ;;
 esac

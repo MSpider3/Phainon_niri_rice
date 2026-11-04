@@ -1,0 +1,130 @@
+/* Coreflame, Phainon: GTK 3 and GTK 4 apps (file pickers, Files, settings windows).
+ * Loaded after DMS's dank-colors.css, so these colours win. Parchment, lapis ink, sun gold;
+ * soft round corners. Same palette as the shell's panels (CfInk, DashSheet). */
+
+@define-color accent_color #334786;
+@define-color accent_bg_color #334786;
+@define-color accent_fg_color #F7F3E8;
+@define-color window_bg_color #F7F3E8;
+@define-color window_fg_color #1E2752;
+@define-color view_bg_color #FBF8EF;
+@define-color view_fg_color #1E2752;
+@define-color headerbar_bg_color #F7F3E8;
+@define-color headerbar_fg_color #334786;
+@define-color headerbar_backdrop_color #F7F3E8;
+@define-color sidebar_bg_color #EFE8D6;
+@define-color sidebar_fg_color #1E2752;
+@define-color sidebar_backdrop_color #EFE8D6;
+@define-color secondary_sidebar_bg_color #F7F3E8;
+@define-color secondary_sidebar_fg_color #1E2752;
+@define-color card_bg_color #FFFDF7;
+@define-color card_fg_color #1E2752;
+@define-color popover_bg_color #FBF8EF;
+@define-color popover_fg_color #1E2752;
+@define-color dialog_bg_color #F7F3E8;
+@define-color dialog_fg_color #1E2752;
+@define-color destructive_bg_color #A3343A;
+@define-color destructive_fg_color #F7F3E8;
+@define-color error_color #A3343A;
+
+/* soft round corners */
+decoration, window.csd {
+    border-radius: 16px;
+}
+
+button, entry, spinbutton, combobox button, .card, frame > border {
+    border-radius: 10px;
+}
+
+popover, popover > contents, menu, .menu, tooltip {
+    border-radius: 14px;
+}
+
+/* the title bar: parchment over a gold double rule, like the Greek-key band of the sheets */
+headerbar, .titlebar {
+    background-color: #F7F3E8;
+    background-image: none;
+    border-bottom: 1px solid #C8B27E;
+    box-shadow: inset 0 -3px #F7F3E8, inset 0 -4px #A87A22;
+}
+
+headerbar .title, .titlebar .title {
+    font-family: "Marcellus";
+    color: #334786;
+}
+
+/* the path bar's crumbs as small parchment pills */
+.path-bar button, .linked > button {
+    background-color: #FBF8EF;
+    border: 1px solid #DCCDA6;
+}
+
+.sidebar, placessidebar, .navigation-sidebar, .sidebar-pane {
+    background-color: #EFE8D6;
+    border-right: 1px solid #DCCDA6;
+}
+
+/* selection: a lapis pill with parchment text */
+row:selected, columnview > listview > row:selected {
+    background-color: #334786;
+    background-image: none;
+    color: #F7F3E8;
+    border-radius: 8px;
+}
+
+/* GTK 3 lists paint each cell on its own, so no rounding there */
+.view:selected, treeview.view:selected, iconview:selected {
+    background-color: #334786;
+    background-image: none;
+    color: #F7F3E8;
+}
+
+entry, spinbutton {
+    background-color: #FFFDF7;
+    border: 1px solid #DCCDA6;
+}
+
+entry:focus, entry:focus-within, spinbutton:focus-within {
+    border-color: #334786;
+    box-shadow: none;
+}
+
+/* the main action (Open, Select, Save): a lapis pill */
+button.suggested-action, button.default {
+    background-color: #334786;
+    background-image: none;
+    color: #F7F3E8;
+    border: none;
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+button.suggested-action:hover {
+    background-color: #3E5598;
+}
+
+button.destructive-action {
+    background-color: #A3343A;
+    background-image: none;
+    color: #F7F3E8;
+    border-radius: 999px;
+}
+
+popover, popover > contents, menu, .menu {
+    border: 1px solid #C8B27E;
+}
+
+tooltip, tooltip.background {
+    background-color: #F7F3E8;
+    border: 1px solid #C8B27E;
+    color: #1E2752;
+}
+
+treeview.view header button, columnview > header > button {
+    border-bottom: 1px solid #DCCDA6;
+    color: #8A6418;
+}
+
+paned > separator, separator {
+    background-color: #DCCDA6;
+}

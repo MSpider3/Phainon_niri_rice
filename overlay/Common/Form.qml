@@ -278,7 +278,7 @@ Singleton {
         // previous form's answer.
         const light = form === "phainon";
         const guard = Quickshell.env("HOME") + "/.config/coreflame/guard.sh";
-        Quickshell.execDetached(["sh", guard, "gtk-on"]);
+        Quickshell.execDetached(["sh", guard, "gtk-on", String(Qt.resolvedUrl("../assets/coreflame/gtk/" + form + ".css")).replace("file://", "")]);
         Quickshell.execDetached(["gsettings", "set", "org.gnome.desktop.interface", "color-scheme", light ? "prefer-light" : "prefer-dark"]);
         Quickshell.execDetached(["gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", light ? "adw-gtk3" : "adw-gtk3-dark"]);
         // DMS reads the light slot only when "icon theme per mode" is on; otherwise the dark slot

@@ -120,7 +120,7 @@ These follow the form by themselves once set up.
   format = "$output "
   ```
 
-GTK apps: new windows open in the current form's colours. An app that's already open keeps the colours it started with until you close and reopen it (that's how GTK4 works). Apps left running in the background, like Files, are restarted for you after a form change.
+GTK apps: new windows open in the current form's colours and style. While a form is on, `~/.config/gtk-3.0/gtk.css` and `~/.config/gtk-4.0/gtk.css` import DMS's colours and then `coreflame-form.css`, a link to the form's stylesheet in `overlay/assets/coreflame/gtk/`: Phainon's parchment, lapis and round corners, Khaslana's obsidian, red title bar, gold seams and square corners, the Flame Reaver's ash and thin violet lines, each with the form's title font. Your own `gtk.css` files are kept in `~/.config/coreflame/` and put back when you leave. An app that's already open keeps the look it started with until you close and reopen it (that's how GTK works). Apps left running in the background, like Files, are restarted for you after a form change, and so is the file picker that apps open through the desktop portal (`xdg-desktop-portal-gtk`), unless a picker is open at the time. The picker only follows when your portal setup sends file choosing to the GTK backend (`default=gtk` in `~/.config/xdg-desktop-portal/niri-portals.conf`); niri's own default puts GNOME's portal first, which draws its own picker.
 
 **More apps:** DMS can write the form's colours into other apps too. `sh coreflame.sh on` (and so `install.sh`) switches this on for the ones you have installed; on an existing install run `sh coreflame.sh apps` once. `sh coreflame.sh off` puts those DMS settings back. The colours are rewritten on every form change. A few apps need you to pick the theme once:
 
@@ -194,6 +194,7 @@ Any of these returns you to stock DMS with the theme, wallpaper cycling, icons, 
 | Forms don't follow the sun | `formschedule status` says "no location known": turn on weather in DMS Settings |
 | No workspace pop-up in the island | turn on the Workspace OSD in DMS Settings (off by default) |
 | GTK apps in the wrong colours | close and reopen the app; `--icons` must have installed adw-gtk3 |
+| File picker still in the old look | `systemctl --user restart xdg-desktop-portal-gtk` (with no picker open) |
 
 ## What's where
 
