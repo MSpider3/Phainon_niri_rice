@@ -1201,8 +1201,8 @@ Singleton {
         }
     }
 
-    // The eclipse window animation comes and goes with Motion.richWindows (mains, no Power Saver,
-    // no "reduce motion"); without it niri plays the animation from the user's own config.
+    // The eclipse window animation comes and goes with Motion.richWindows (mains, no Power Saver);
+    // without it niri plays the animation from the user's own config.
     Connections {
         target: Motion
 
