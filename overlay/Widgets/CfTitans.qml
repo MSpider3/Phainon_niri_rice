@@ -18,7 +18,8 @@ Item {
 
     // Hovering a Titan says how its Coreflame is taken
     function tip(row) {
-        return row[1] + " · " + row[3] + (row[2] ? " (taken)" : "");
+        const text = row[1] + " · " + row[3] + (row[2] ? " (taken)" : "");
+        return Form.reaver ? text.toLowerCase() : text;
     }
     readonly property string unlit: rows.filter(r => !r[2]).map(r => r[1].toLowerCase()).join(" · ")
 
