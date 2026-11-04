@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
@@ -336,13 +337,27 @@ PanelWindow {
                         width: wallGrid.cellWidth
                         height: 100
 
+                        // Khaslana: square slabs on a hard red offset
+                        Rectangle {
+                            visible: Form.khaslana && Form.active
+                            x: 4
+                            y: 4
+                            width: parent.width
+                            height: parent.height
+                            color: "#8E1424"
+                        }
+
                         ClippingRectangle {
+                            id: frame
                             anchors.fill: parent
                             radius: Form.phainon || !Form.active ? 14 : 0
-                            color: Theme.surfaceContainerHigh
+                            color: thumb.shard ? "transparent" : Theme.surfaceContainerHigh
 
                             Image {
+                                id: picture
                                 anchors.fill: parent
+                                // The Flame Reaver draws it through his shard below instead
+                                visible: !thumb.shard
                                 source: files.get(thumb.at, "fileUrl") ?? ""
                                 sourceSize: Qt.size(360, 200)
                                 fillMode: Image.PreserveAspectCrop
@@ -350,22 +365,70 @@ PanelWindow {
                             }
                         }
 
+                        // Flame Reaver: each thumbnail torn as a shard and greyed, the current one in
+                        // full colour. Only while this view is open, so the layers come and go with it.
+                        readonly property bool shard: Form.reaver && Form.active
+                        readonly property var outline: [Qt.point(0, 0), Qt.point(width, height * 0.06), Qt.point(width * 0.97, height), Qt.point(width * 0.02, height * 0.94), Qt.point(0, 0)]
+
+                        Shape {
+                            id: shardMask
+                            visible: false
+                            anchors.fill: parent
+                            layer.enabled: thumb.shard
+                            preferredRendererType: Shape.CurveRenderer
+
+                            ShapePath {
+                                fillColor: "white"
+                                strokeColor: "transparent"
+                                PathPolyline {
+                                    path: thumb.shard ? thumb.outline : []
+                                }
+                            }
+                        }
+
+                        MultiEffect {
+                            visible: thumb.shard
+                            anchors.fill: parent
+                            source: thumb.shard ? picture : null
+                            saturation: thumb.current ? 0 : -1
+                            brightness: thumb.current || thumbMouse.containsMouse ? 0 : -0.15
+                            maskEnabled: true
+                            maskSource: shardMask
+                        }
+
+                        Shape {
+                            visible: thumb.shard && (thumb.current || thumbMouse.containsMouse)
+                            anchors.fill: parent
+                            preferredRendererType: Shape.CurveRenderer
+
+                            ShapePath {
+                                fillColor: "transparent"
+                                strokeColor: thumb.current ? "#B9A8FF" : Qt.rgba(185 / 255, 168 / 255, 1, 0.5)
+                                strokeWidth: thumb.current ? 2 : 1.5
+                                joinStyle: ShapePath.MiterJoin
+                                PathPolyline {
+                                    path: thumb.shard ? thumb.outline : []
+                                }
+                            }
+                        }
+
                         CfSurface {
                             anchors.fill: parent
-                            visible: thumb.current || thumbMouse.containsMouse
+                            visible: (Form.phainon || !Form.active) && (thumb.current || thumbMouse.containsMouse)
                             color: "transparent"
                             edgeColor: thumb.current ? Theme.primary : Theme.withAlpha(Theme.primary, 0.5)
                             edgeWidth: thumb.current ? 3 : 2
                             radius: 14
-                            shape: Form.phainon || !Form.active ? "round" : "slab"
+                            shape: "round"
                         }
 
+                        // Khaslana: the current one edged in gold
                         Rectangle {
                             anchors.fill: parent
-                            visible: !Form.phainon && Form.active && (thumb.current || thumbMouse.containsMouse)
+                            visible: Form.khaslana && Form.active && (thumb.current || thumbMouse.containsMouse)
                             color: "transparent"
-                            border.width: thumb.current ? 3 : 2
-                            border.color: thumb.current ? Theme.primary : Theme.withAlpha(Theme.primary, 0.5)
+                            border.width: thumb.current ? 2 : 1
+                            border.color: thumb.current ? "#F2C75C" : "#8A5A2B"
                         }
 
                         MouseArea {

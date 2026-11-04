@@ -285,8 +285,56 @@ Item {
                 color: SessionData.doNotDisturb ? Theme.surfaceText : Theme.withAlpha(Theme.surfaceText, 0.6)
             }
 
+            // Khaslana: an Off/On plate pair, the chosen plate red
+            Row {
+                visible: Form.khaslana
+                anchors.verticalCenter: parent.verticalCenter
+
+                Repeater {
+                    model: [false, true]
+
+                    Rectangle {
+                        required property bool modelData
+                        readonly property bool picked: SessionData.doNotDisturb === modelData
+                        width: plateText.implicitWidth + 24
+                        height: 24
+                        color: picked ? "#8E1424" : "transparent"
+                        border.width: 1
+                        border.color: "#E0B04A"
+
+                        Text {
+                            id: plateText
+                            anchors.centerIn: parent
+                            text: parent.modelData ? "ON" : "OFF"
+                            font.family: "Cinzel"
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 1.5
+                            color: parent.picked ? "#F5D27A" : "#C9B89E"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: SessionData.setDoNotDisturb(parent.modelData)
+                        }
+                    }
+                }
+            }
+
+            Text {
+                visible: Form.khaslana
+                anchors.verticalCenter: parent.verticalCenter
+                text: "DO NOT DISTURB"
+                font.family: "Cinzel"
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+                font.letterSpacing: 2
+                color: "#E0B04A"
+            }
+
             Button {
-                visible: !Form.reaver
+                visible: !Form.reaver && !Form.khaslana
                 icon: SessionData.doNotDisturb ? "notifications_off" : "notifications"
                 label: "Do not disturb"
                 on: SessionData.doNotDisturb

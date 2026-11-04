@@ -107,6 +107,24 @@ Column {
         glyph: "passage"
         label: "The last minute"
 
+        // Phainon: faint rules under the soft area
+        Column {
+            visible: Form.phainon && Form.active
+            width: parent.width
+            y: Math.round((parent.height - 20) / 4)
+            spacing: Math.round((parent.height - 20) / 4) - 1
+
+            Repeater {
+                model: 3
+
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: "#E4DAC0"
+                }
+            }
+        }
+
         DSparkline {
             id: graph
             anchors.fill: parent
@@ -117,8 +135,28 @@ Column {
             lineColor: Form.reaver ? Theme.live : Theme.primary
             secondaryLineColor: Theme.withAlpha(Theme.surfaceText, 0.5)
             lineWidth: Form.phainon ? 2 : 1.5
-            fillOpacity: Form.reaver ? 0 : 0.12
+            // Khaslana a hard gold line, the Flame Reaver a bare violet one: no fill under either
+            fillOpacity: Form.active && !Form.phainon ? 0 : 0.12
             curved: Form.phainon || !Form.active
+        }
+
+        // Flame Reaver: the minute ends in one ember
+        Rectangle {
+            readonly property var last: graph.points.length > 0 ? graph.points[graph.points.length - 1] : null
+            visible: Form.reaver && Form.active && last !== null
+            x: graph.x + (last ? last.x : 0) - width / 2
+            y: graph.y + (last ? last.y : 0) - height / 2
+            width: 8
+            height: 8
+            rotation: 45
+            color: Theme.live
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 3
+                height: 3
+                color: "#F4E9D6"
+            }
         }
 
         // Scale and legend under the graph
