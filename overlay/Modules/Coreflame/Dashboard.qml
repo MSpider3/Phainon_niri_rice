@@ -164,12 +164,11 @@ PanelWindow {
             }
         }
 
-        // A full view hangs from the island as one tab. The overview keeps only an island-sized plate
-        // for its header: the form's layout below draws its own frame.
+        // A full view hangs from the island as one tab. The overview has no header of its own: the
+        // island stays in sight above it and the form's layout below draws its own frame.
         CfTab {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: dash.view === "" ? Math.min(parent.width, header.implicitWidth + 44) : parent.width
-            height: dash.view === "" ? dash.strip : parent.height
+            visible: dash.view !== ""
+            anchors.fill: parent
             side: "center"
         }
 
@@ -193,15 +192,15 @@ PanelWindow {
             anchors.fill: parent
         }
 
-        // Header: the island's own line, kept in place while the panel grows beneath it
+        // Header of a full view: back, and the view's name
         Row {
             id: header
+            visible: dash.view !== ""
             anchors.horizontalCenter: parent.horizontalCenter
             height: dash.strip
             spacing: 10
 
             DIcon {
-                visible: dash.view !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 name: "arrow_back"
                 size: 20
@@ -225,7 +224,6 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 text: {
                     const names = {
-                        "": Form.dawnPeriod(clock.date?.getHours() ?? 0),
                         "music": "Ocean · Now playing",
                         "weather": "Sky · Weather",
                         "wallpaper": "Worldbearing · Wallpapers",

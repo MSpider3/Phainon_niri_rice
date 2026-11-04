@@ -423,8 +423,8 @@ PanelWindow {
         onTriggered: win.panelSettled = true
     }
 
-    // A notification arriving while an island panel is open hangs inside that panel's top edge,
-    // just under the island, instead of taking the island over.
+    // A notification arriving while an island panel is open still shows on the island: the same
+    // notice plate, drawn over the island above the panel, never as a second pop-up.
     LazyLoader {
         id: noticeLoader
         active: win.panelSettled && !!island.latest
@@ -439,15 +439,12 @@ PanelWindow {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             anchors.top: true
-            margins.top: win.strip + 8
-            implicitWidth: noticeFace.implicitWidth + 32
-            implicitHeight: 34
+            // At least the island's width, so its resting face never shows round the edges
+            implicitWidth: Math.max(noticeFace.implicitWidth + 44, island.width)
+            implicitHeight: win.strip + 8
 
-            CfSurface {
-                anchors.fill: parent
-                color: Theme.surfaceContainerHigh
-                edgeColor: Theme.withAlpha(Theme.primary, 0.6)
-                radius: 17
+            IslandPlate {
+                noting: true
             }
 
             HoverHandler {
@@ -464,7 +461,6 @@ PanelWindow {
                 id: noticeFace
                 anchors.centerIn: parent
                 height: parent.height
-                compact: true
                 note: island.latest
             }
         }
@@ -714,13 +710,23 @@ PanelWindow {
         }
     }
 
-    // Notification face: who, what, and the notification's own buttons. Shown on the island, or
-    // inside an island panel's top edge (`compact`, no lore line) while one is open.
+    // The island's plate. Phainon's floats free of the top edge as a whole pill; the others hang from it.
+    component IslandPlate: CfTab {
+        property bool noting: false
+        anchors.fill: parent
+        anchors.topMargin: Form.phainon ? 4 : 0
+        anchors.bottomMargin: Form.phainon ? 2 : 0
+        side: Form.phainon ? "float" : "center"
+        color: !noting ? Theme.surface : (Form.phainon ? "#F7F3E8" : (Form.khaslana ? "#0B080B" : "#0D0B14"))
+        edge: !noting ? Theme.outline : (Form.phainon ? "#C8B27E" : (Form.khaslana ? "#E0B04A" : "#8F7BE0"))
+        echoSolid: noting && Form.khaslana
+    }
+
+    // Notification face: who, what, and the notification's own buttons. Shown on the island.
     component ToastFace: Row {
         id: face
 
         property var note: null
-        property bool compact: false
 
         spacing: 10
 
@@ -734,7 +740,7 @@ PanelWindow {
         // A line of lore in front of every notification: a decree, a recurrence notice,
         // or a log line from the cycle.
         StyledText {
-            visible: Form.active && !face.compact
+            visible: Form.active
             anchors.verticalCenter: parent.verticalCenter
             text: Form.phainon ? "DECREE" : (Form.khaslana ? "[ RECURRENCE NOTICE ]" : "// signal caught in cycle " + Form.cycleText)
             font.family: Form.phainon ? Form.display(Theme.fontFamily) : Theme.monoFontFamily
@@ -745,7 +751,7 @@ PanelWindow {
 
         StyledText {
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, face.compact ? 170 : 200)
+            width: Math.min(implicitWidth, 200)
             elide: Text.ElideRight
             text: face.note?.summary || face.note?.appName || ""
             font.pixelSize: Theme.fontSizeMedium
@@ -756,7 +762,7 @@ PanelWindow {
         StyledText {
             visible: !!face.note?.body
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, face.compact ? 220 : 300)
+            width: Math.min(implicitWidth, 300)
             elide: Text.ElideRight
             maximumLineCount: 1
             textFormat: Text.PlainText
@@ -1158,12 +1164,8 @@ PanelWindow {
 
         // A notice turns the island into the form's notice plate: a parchment decree, a black plate
         // with a gold edge and a red offset, or the Reaver's slab with a violet hem.
-        CfTab {
-            anchors.fill: parent
-            side: "center"
-            color: !island.noting ? Theme.surface : (Form.phainon ? "#F7F3E8" : (Form.khaslana ? "#0B080B" : "#0D0B14"))
-            edge: !island.noting ? Theme.outline : (Form.phainon ? "#C8B27E" : (Form.khaslana ? "#E0B04A" : "#8F7BE0"))
-            echoSolid: island.noting && Form.khaslana
+        IslandPlate {
+            noting: island.noting
         }
 
         // Irontomb: a critical alert darkens the island to black under red text
@@ -1280,9 +1282,10 @@ PanelWindow {
                 color: Theme.surfaceText
             }
 
-            // Khaslana rules his island off into fields and names the hour.
+            // Khaslana rules his island off into fields and names the hour (not while a panel is open:
+            // the dashboard's hero plate names it there).
             Rectangle {
-                visible: Form.khaslana
+                visible: Form.khaslana && !win.panelOpen
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1
                 height: 18
@@ -1290,7 +1293,7 @@ PanelWindow {
             }
 
             Text {
-                visible: Form.khaslana
+                visible: Form.khaslana && !win.panelOpen
                 anchors.verticalCenter: parent.verticalCenter
                 text: Form.dawnPeriod(island.hour).toUpperCase()
                 font.family: Form.display(Theme.fontFamily)

@@ -8,7 +8,8 @@ import qs.Common
 Item {
     id: root
 
-    // "left" and "right" sit flush in a screen corner; "center" hangs free.
+    // "left" and "right" sit flush in a screen corner; "center" hangs free; "float" (Phainon's
+    // island) is a whole pill a few pixels below the edge.
     property string side: "center"
     property color color: Theme.surface
     property color edge: Theme.outline
@@ -77,10 +78,11 @@ Item {
 
         Rectangle {
             color: root.color
-            topLeftRadius: 0
-            topRightRadius: 0
-            bottomLeftRadius: root.side === "left" ? 0 : root.softRadius
-            bottomRightRadius: root.side === "right" ? 0 : root.softRadius
+            readonly property real pill: root.side === "float" ? height / 2 : 0
+            topLeftRadius: pill
+            topRightRadius: pill
+            bottomLeftRadius: pill || (root.side === "left" ? 0 : root.softRadius)
+            bottomRightRadius: pill || (root.side === "right" ? 0 : root.softRadius)
             border.width: Form.active ? 1 : 0
             border.color: Theme.withAlpha(root.edge, 0.6)
         }
