@@ -7,12 +7,14 @@ import qs.Common
 import qs.Services
 import qs.Widgets
 import qs.DCommon.Widgets as DW
+import "PowerLoop.js" as Loop
 
-// The session menu over a veiled screen. Log out, Slumber, Rekindle, restart and shut down
-// ask for a second press before they act.
-//   Khaslana: seven black cards with red tide feet over the rising Black Tide.
-//   Flame Reaver: seven shards around his point of impact.
-//   Phainon: medallions on the sun's path.
+// The session menu over a veiled screen: a loop of the actions with the chosen one always in
+// the middle. Left/Right turn the loop (it wraps), a click on a side option turns it to the
+// middle. Every action but Lock asks for a second press before it acts.
+//   Khaslana: black cards with red tide feet sliding as one heavy row over the Black Tide.
+//   Flame Reaver: shards jerking sideways in four hard steps around his point of impact.
+//   Phainon: medallions riding the sun's path, setting below the horizon at the ends.
 PanelWindow {
     id: menu
 
@@ -20,9 +22,51 @@ PanelWindow {
     property bool shown: false
     property real opening: shown ? 1 : 0
     readonly property real reveal: Motion.step(opening)
-    property int selected: 0
     property int armed: -1
     property bool canHibernate: false
+
+    // The loop: `off` is where it is heading (whole steps, unbounded), `vis` where it is drawn.
+    readonly property int n: choices.length
+    property real off: 0
+    property real fromOff: 0
+    property real turn: 1
+    readonly property real vis: fromOff + (off - fromOff) * (rv ? Math.ceil(turn * 4) / 4 : turn)
+    readonly property int selected: Loop.index(off, n)
+
+    function wrap(x) {
+        return Loop.wrap(x, n);
+    }
+    function sink(a) {
+        return Loop.sink(a, n);
+    }
+    function fade(a) {
+        return Loop.fade(a, n);
+    }
+
+    function go(delta) {
+        if (!delta || n < 2)
+            return;
+        const from = vis;
+        turning.stop();
+        armed = -1;
+        fromOff = from;
+        off += delta;
+        if (Motion.openMs === 0)
+            turn = 1;
+        else
+            turning.restart();
+    }
+
+    NumberAnimation {
+        id: turning
+        target: menu
+        property: "turn"
+        from: 0
+        to: 1
+        duration: !Form.active ? Theme.shortDuration : (menu.kh ? 420 : (menu.rv ? 200 : 340))
+        easing.type: !Form.active ? Easing.OutCubic : (menu.kh ? Easing.InOutCubic : (menu.rv ? Easing.Linear : Easing.OutBack))
+        easing.overshoot: 1.4
+    }
 
     readonly property string lay: !Form.active ? "phainon" : Form.form
     readonly property bool kh: lay === "khaslana"
@@ -43,7 +87,7 @@ PanelWindow {
             "icon": "bedtime",
             "label": "Sleep",
             "lore": "Repose",
-            "confirm": false
+            "confirm": true
         },
         {
             "id": "hibernate",
@@ -84,13 +128,33 @@ PanelWindow {
     // Stock hibernateSupported: the kernel offers "disk" (gone e.g. under Secure Boot lockdown).
     readonly property var choices: allChoices.filter(c => c.id !== "hibernate" || (canHibernate && SessionService.hibernateSupported))
     // Slumber appears after the check finishes on first open; an armed index would then point at another action.
-    onChoicesChanged: armed = -1
+    onChoicesChanged: {
+        armed = -1;
+        home();
+    }
 
     // The line under the choices: the keys, or the question once a choice is armed
-    readonly property string hint: armed < 0 || armed >= choices.length ? "Arrows to move · Enter to choose · Esc to close" : choices[armed].label + "? <b>Enter</b> confirm · <b>Esc</b> cancel"
+    readonly property string hint: {
+        const c = choices[selected];
+        if (!c)
+            return "";
+        if (armed === selected)
+            return c.label + "? <b>Enter</b> or click again · <b>Esc</b> cancel";
+        if (!c.confirm)
+            return "<b>← →</b> choose · <b>Enter</b> or click: " + c.label;
+        return "<b>← →</b> choose · <b>Enter</b> or click " + c.label + ", then once more";
+    }
+
+    // Every open starts on Lock, in the middle
+    function home() {
+        turning.stop();
+        off = 0;
+        fromOff = 0;
+        turn = 1;
+    }
 
     function open() {
-        selected = 0;
+        home();
         armed = -1;
         shown = true;
         Coreflames.earn("death");
@@ -108,15 +172,12 @@ PanelWindow {
             open();
     }
 
-    function hover(index) {
-        if (selected !== index) {
-            selected = index;
-            armed = -1;
-        }
-    }
-
+    // A side option turns to the middle; the middle one arms, or acts once armed (Lock at once).
     function choose(index) {
-        selected = index;
+        if (index !== selected) {
+            go(Loop.turnTo(index, off, n));
+            return;
+        }
         if (choices[index].confirm && armed !== index) {
             armed = index;
             return;
@@ -212,17 +273,23 @@ PanelWindow {
         focus: true
         opacity: menu.reveal
 
-        Keys.onEscapePressed: menu.close()
-        Keys.onLeftPressed: {
-            menu.selected = (menu.selected + menu.choices.length - 1) % menu.choices.length;
-            menu.armed = -1;
+        Keys.onEscapePressed: {
+            if (menu.armed >= 0)
+                menu.armed = -1;
+            else
+                menu.close();
         }
-        Keys.onRightPressed: {
-            menu.selected = (menu.selected + 1) % menu.choices.length;
-            menu.armed = -1;
+        Keys.onLeftPressed: menu.go(-1)
+        Keys.onRightPressed: menu.go(1)
+        // A held key repeats; only a fresh press may arm or confirm
+        Keys.onReturnPressed: event => {
+            if (!event.isAutoRepeat)
+                menu.choose(menu.selected);
         }
-        Keys.onReturnPressed: menu.choose(menu.selected)
-        Keys.onEnterPressed: menu.choose(menu.selected)
+        Keys.onEnterPressed: event => {
+            if (!event.isAutoRepeat)
+                menu.choose(menu.selected);
+        }
 
         Loader {
             anchors.fill: parent
@@ -307,10 +374,16 @@ PanelWindow {
                         required property var modelData
                         required property int index
                         readonly property bool current: menu.selected === index
-                        readonly property real t: menu.choices.length > 1 ? 0.04 + 0.92 * index / (menu.choices.length - 1) : 0.5
-                        readonly property point p: sun.at(t)
-                        x: Math.round(p.x - width / 2)
-                        y: Math.round(p.y - height / 2 - 30 * Math.sin(Math.PI * t))
+                        readonly property bool armed: menu.armed === index
+                        // Place on the loop: 0 is noon, the ends sit near the horizon
+                        readonly property real p: menu.wrap(index - menu.vis)
+                        readonly property real a: Math.abs(p)
+                        readonly property point at: sun.at(Math.min(1, Math.max(0, 0.5 + p / menu.n)))
+                        x: at.x - width / 2
+                        y: at.y - height / 2 + sun.k * (menu.sink(a) * 220 - 40)
+                        z: 20 - Math.round(a * 2)
+                        scale: 1.18 - 0.1 * Math.min(a, 3)
+                        opacity: menu.fade(a)
                         width: 132
                         height: pmCol.implicitHeight + 20
                         topLeftRadius: 66
@@ -319,7 +392,7 @@ PanelWindow {
                         bottomRightRadius: 16
                         color: phRoot.paper
                         border.width: 1
-                        border.color: phRoot.rim
+                        border.color: current ? "#A87A22" : phRoot.rim
 
                         Column {
                             id: pmCol
@@ -332,9 +405,10 @@ PanelWindow {
                                 width: 76
                                 height: 76
                                 radius: 38
-                                color: pm.current ? phRoot.lapis : (menu.parch ? "#FBF9F3" : Theme.surfaceContainerHighest)
+                                // Armed: the medallion burns gold
+                                color: pm.armed ? "#A87A22" : (pm.current ? phRoot.lapis : (menu.parch ? "#FBF9F3" : Theme.surfaceContainerHighest))
                                 border.width: pm.current ? 6 : 1
-                                border.color: pm.current ? Qt.rgba(241 / 255, 218 / 255, 79 / 255, 0.55) : phRoot.rim
+                                border.color: pm.current ? Qt.rgba(241 / 255, 218 / 255, 79 / 255, pm.armed ? 0.75 : 0.55) : phRoot.rim
 
                                 DW.DIcon {
                                     anchors.centerIn: parent
@@ -371,9 +445,7 @@ PanelWindow {
 
                         MouseArea {
                             anchors.fill: parent
-                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onEntered: menu.hover(pm.index)
                             onClicked: menu.choose(pm.index)
                         }
                     }
@@ -475,11 +547,12 @@ PanelWindow {
                 }
             }
 
-            Row {
+            // One heavy row; a card leaving an end sinks into the tide and climbs back at the other
+            Item {
                 id: cards
-                x: Math.round((khRoot.width - width) / 2)
+                width: khRoot.width
+                height: 290
                 y: Math.round(khRoot.height * 0.28 - 30 * (1 - menu.reveal))
-                spacing: 16
 
                 Repeater {
                     model: menu.choices
@@ -489,6 +562,12 @@ PanelWindow {
                         required property var modelData
                         required property int index
                         readonly property bool current: menu.selected === index
+                        readonly property real p: menu.wrap(index - menu.vis)
+                        readonly property real a: Math.abs(p)
+                        x: (khRoot.width - khRoot.cw) / 2 + p * (khRoot.cw + 16)
+                        y: menu.sink(a) * 260
+                        z: 20 - Math.round(a * 2)
+                        opacity: menu.fade(a)
                         width: khRoot.cw
                         height: 290
 
@@ -595,11 +674,21 @@ PanelWindow {
                             }
                         }
 
+                        // Armed: a gold rim round the lifted card
+                        Rectangle {
+                            visible: menu.armed === card.index
+                            x: -3
+                            y: face.y - 3
+                            width: parent.width + 6
+                            height: parent.height + 6
+                            color: "transparent"
+                            border.width: 3
+                            border.color: "#F2C75C"
+                        }
+
                         MouseArea {
                             anchors.fill: parent
-                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onEntered: menu.hover(card.index)
                             onClicked: menu.choose(card.index)
                         }
                     }
@@ -648,7 +737,7 @@ PanelWindow {
         Item {
             id: rvRoot
 
-            // Each action's shard in the 800 × 640 field: x, y, width, height, outline (shares of the box)
+            // Each action's shard: x, y (unused since the loop places them), width, height, outline (shares of the box)
             readonly property var slots: ({
                     "lock": [140, 0, 220, 190, [[0, 0], [1, 0], [0.82, 1], [0.1, 0.8]]],
                     "suspend": [440, 0, 220, 190, [[0.18, 0], [1, 0], [0.9, 0.8], [0, 1]]],
@@ -661,10 +750,10 @@ PanelWindow {
 
             Item {
                 id: field
-                width: 800
-                height: 640
+                width: 1700
+                height: 480
                 anchors.centerIn: parent
-                scale: Math.min(1, (rvRoot.width - 40) / 800, (rvRoot.height - 120) / 640) * (0.92 + 0.08 * menu.reveal)
+                scale: Math.min(1, (rvRoot.width - 40) / 1700, (rvRoot.height - 120) / 480) * (0.92 + 0.08 * menu.reveal)
 
                 CfCracks {
                     anchors.fill: parent
@@ -681,8 +770,14 @@ PanelWindow {
                         readonly property bool current: menu.selected === index
                         readonly property bool armed: menu.armed === index
                         readonly property var slot: rvRoot.slots[modelData.id]
-                        x: slot[0]
-                        y: slot[1]
+                        // A torn line round the point of impact; only the middle shard is lit
+                        readonly property real p: menu.wrap(index - menu.vis)
+                        readonly property real a: Math.abs(p)
+                        x: 850 - width / 2 + p * 235
+                        y: 145 + 34 * Math.cos(p * 2.3) * Math.min(1, a) + menu.sink(a) * 200
+                        z: 20 - Math.round(a * 2)
+                        scale: a < 0.5 ? 1.15 : 0.85
+                        opacity: menu.fade(a)
                         width: slot[2]
                         height: slot[3]
 
@@ -707,15 +802,15 @@ PanelWindow {
                                     y2: shard.height
                                     GradientStop {
                                         position: 0
-                                        color: shard.current ? "#F07A85" : "#B9A8FF"
+                                        color: shard.armed ? "#F07A85" : (shard.current ? "#B9A8FF" : "#77738A")
                                     }
                                     GradientStop {
                                         position: 0.5
-                                        color: shard.current ? "#C07AB2" : "#5C5478"
+                                        color: shard.armed ? "#C07AB2" : (shard.current ? "#5C5478" : "#46435A")
                                     }
                                     GradientStop {
                                         position: 1
-                                        color: "#8F7BE0"
+                                        color: shard.current ? "#8F7BE0" : "#5E5A6E"
                                     }
                                 }
                                 PathPolyline {
@@ -725,7 +820,7 @@ PanelWindow {
 
                             ShapePath {
                                 strokeWidth: -1
-                                fillColor: shard.current ? "#2A1424" : Qt.rgba(13 / 255, 11 / 255, 20 / 255, 0.95)
+                                fillColor: shard.armed ? "#2A1424" : (shard.current ? "#1C1730" : Qt.rgba(13 / 255, 11 / 255, 20 / 255, 0.95))
                                 PathPolyline {
                                     path: shard.outline(2)
                                 }
@@ -740,7 +835,7 @@ PanelWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 name: shard.modelData.icon
                                 size: 34
-                                color: shard.current ? "#F07A85" : "#B9A8FF"
+                                color: shard.armed ? "#F07A85" : (shard.current ? "#D6CCFF" : "#6E6A84")
                             }
 
                             Text {
@@ -749,7 +844,7 @@ PanelWindow {
                                 font.family: "Chakra Petch"
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
-                                color: shard.armed ? "#F07A85" : "#E9E7F2"
+                                color: shard.armed ? "#F07A85" : (shard.current ? "#E9E7F2" : "#8E8AA0")
                             }
 
                             Text {
@@ -757,27 +852,34 @@ PanelWindow {
                                 text: shard.armed ? "enter again to confirm" : shard.modelData.lore.toLowerCase()
                                 font.family: "Chakra Petch"
                                 font.pixelSize: 13
-                                color: shard.armed ? "#F7B0B7" : "#A8A4BC"
+                                color: shard.armed ? "#F7B0B7" : (shard.current ? "#A8A4BC" : "#6E6A84")
                             }
                         }
 
                         MouseArea {
                             anchors.fill: parent
-                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onEntered: menu.hover(shard.index)
                             onClicked: menu.choose(shard.index)
                         }
                     }
                 }
             }
 
+            // The key line in lower case; an armed question shows Enter in ember
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                y: rvRoot.height / 2 + 320 * field.scale + 28
-                text: "arrows to move · enter to choose · esc to close"
+                y: rvRoot.height / 2 + 240 * field.scale + 60
+                text: {
+                    let first = true;
+                    return menu.hint.toLowerCase().replace(/<b>/g, () => {
+                        const c = first && menu.armed >= 0 ? "#F07A85" : "#B9A8FF";
+                        first = false;
+                        return "<b><font color=\"" + c + "\">";
+                    }).replace(/<\/b>/g, "</font></b>");
+                }
+                textFormat: Text.StyledText
                 font.family: "Chakra Petch"
-                font.pixelSize: 13
+                font.pixelSize: 17
                 color: "#A8A4BC"
             }
         }
