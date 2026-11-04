@@ -1,0 +1,108 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import qs.DCommon.Common
+import qs.DCommon.Widgets
+import qs.Common as Shell
+import qs.Widgets as Cf
+
+StyledButton {
+    id: pill
+
+    property string label: ""
+    property string iconName: ""
+    property string path: ""
+    property bool current: false
+    property bool dropEnabled: false
+    property color chipColor: Style.chipSurface
+
+    readonly property bool dropTarget: dropZone.containsDrag
+    // Coreflame: Phainon capsules (the current one lapis), Khaslana Cinzel plates (the current one
+    // blood red with a gold edge), the Flame Reaver plain text (the current one violet).
+    readonly property bool cf: Shell.Form.active
+    readonly property bool kh: Shell.Form.khaslana
+    readonly property bool rv: Shell.Form.reaver
+    readonly property color cfText: Shell.Form.phainon ? (current ? "#F7F3E8" : "#1E2752") : kh ? (current ? "#F5D27A" : "#F3E6CC") : (current ? "#B9A8FF" : "#A8A4BC")
+    readonly property color contentColor: dropTarget ? Style.onPrimaryContainer : cf ? cfText : current ? Style.onSelectedContainer : Style.surfaceText
+
+    signal middleClicked
+    signal menuRequested(real pointX, real pointY)
+    signal dropped(var drop)
+    signal springLoaded
+
+    focusPolicy: Qt.TabFocus
+    implicitWidth: row.implicitWidth + (rv ? 2 : cf ? (kh ? 10 : 12) : FileBrowserMetrics.pathPillPadding) * 2
+    implicitHeight: FileBrowserMetrics.pathPillHeight
+    radius: cf ? (Shell.Form.phainon ? height / 2 : 0) : FileBrowserMetrics.pathPillRadius
+    color: dropTarget ? Style.primaryContainer : cf ? (rv ? "transparent" : current ? (kh ? "#8E1424" : "#334786") : (kh ? "transparent" : "#FBF9F3")) : current ? Style.selectedContainer : chipColor
+    border.width: cf && !rv ? 1 : 0
+    border.color: kh ? (current ? "#F2C75C" : "#8A5A2B") : (current ? "#334786" : "#DCCDA6")
+    Accessible.name: label
+
+    StateLayer {
+        control: pill
+        stateColor: pill.contentColor
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.MiddleButton
+        onTapped: pill.middleClicked()
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: point => pill.menuRequested(point.position.x, point.position.y)
+    }
+
+    Keys.onPressed: event => {
+        const shifted = (event.modifiers & Qt.ShiftModifier) !== 0;
+        if (event.key !== Qt.Key_Menu && !(event.key === Qt.Key_F10 && shifted))
+            return;
+        event.accepted = true;
+        pill.menuRequested(pill.width / 2, pill.height / 2);
+    }
+
+    FileDropArea {
+        id: dropZone
+
+        anchors.fill: parent
+        dropPath: pill.path
+        enabled: pill.dropEnabled && pill.path !== ""
+        springLoad: !pill.current
+        onDropped: drop => pill.dropped(drop)
+        onSpringLoaded: pill.springLoaded()
+    }
+
+    FocusRing {
+        anchors.margins: 0
+        radius: pill.radius
+        visible: pill.visualFocus
+    }
+
+    Row {
+        id: row
+
+        anchors.centerIn: parent
+        spacing: FileBrowserMetrics.pathPillSpacing
+
+        DIcon {
+            anchors.verticalCenter: parent.verticalCenter
+            // Coreflame: words only, the icon kept for a pill with no name (the root)
+            visible: pill.iconName !== "" && (!pill.cf || pill.label === "")
+            name: pill.iconName
+            size: FileBrowserMetrics.pathIconSize
+            color: pill.current || pill.dropTarget ? pill.contentColor : Style.primary
+        }
+
+        StyledText {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: pill.label !== ""
+            text: !pill.cf ? pill.label : pill.kh ? pill.label.toUpperCase() : pill.rv ? pill.label.toLowerCase() : pill.label
+            color: pill.contentColor
+            font.family: !pill.cf ? resolvedFontFamily : pill.kh ? "Cinzel" : pill.rv ? "Chakra Petch" : Shell.Form.numerals
+            font.pixelSize: pill.kh ? 11 : pill.cf ? 14 : Style.fontSizeMedium
+            font.weight: pill.kh ? Font.DemiBold : pill.rv ? Font.Medium : Style.fontWeightMedium
+            font.letterSpacing: pill.kh ? 1.3 : 0
+        }
+    }
+}

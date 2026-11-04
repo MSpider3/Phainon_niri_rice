@@ -247,6 +247,7 @@ PanelWindow {
         searchField: input
         parentHandler: panel
         transientSurfaceTracker: transientSurfaces
+        headerText: contextMenu.item?.name ?? ""
         onEditAppRequested: app => launcher.openEditMode(app)
     }
 

@@ -175,6 +175,8 @@ DFloatingWindow {
     implicitWidth: SettingsMetrics.windowWidth
     implicitHeight: heightWithin(SettingsMetrics.windowHeight, SettingsMetrics.pagePaddingH * 2 + Theme.spacingL)
     visible: false
+    // Coreflame: the form's frame (CfFrame below) replaces the stock window surface
+    surfaceColor: Form.active ? "transparent" : Theme.floatingWindowSurface
 
     onClosed: hide()
 
@@ -272,6 +274,15 @@ DFloatingWindow {
         }
     }
 
+    Loader {
+        anchors.fill: parent
+        // Khaslana's red offset sits 6px right and below the plate, inside the window
+        anchors.rightMargin: Form.khaslana ? 6 : 0
+        anchors.bottomMargin: Form.khaslana ? 6 : 0
+        active: Form.active
+        sourceComponent: CfFrame {}
+    }
+
     SettingsPaneNavigation {
         id: contentFocusScope
 
@@ -294,13 +305,33 @@ DFloatingWindow {
             anchors.fill: parent
             spacing: 0
 
-            DWindowHeader {
-                id: titleBar
+            Item {
+                // Coreflame: room for the Earth glyph before a left-aligned title (Phainon, Khaslana)
+                readonly property real glyphSpace: Form.active && !Form.reaver ? 32 : 0
+
                 width: parent.width
+                height: titleBar.height
                 z: 10
-                controls: windowControls
-                title: I18n.tr("Settings")
-                onCloseRequested: settingsModal.hide()
+
+                CfGlyph {
+                    visible: parent.glyphSpace > 0 && !titleBar.collapsed
+                    x: Theme.windowInset + 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "earth"
+                    size: 20
+                    color: Form.khaslana ? "#E0B04A" : "#334786"
+                }
+
+                DWindowHeader {
+                    id: titleBar
+                    x: parent.glyphSpace
+                    width: parent.width - parent.glyphSpace
+                    controls: windowControls
+                    // The header upper-cases it for Phainon and Khaslana and writes "// " + lower case for the Reaver
+                    title: Form.active ? "Earth · " + I18n.tr("Settings") : I18n.tr("Settings")
+                    titleAlignment: Form.active ? Text.AlignLeft : Text.AlignHCenter
+                    onCloseRequested: settingsModal.hide()
+                }
             }
 
             Item {
@@ -318,8 +349,8 @@ DFloatingWindow {
                     anchors.leftMargin: body.paneInset
                     anchors.rightMargin: body.paneInset
                     radius: SettingsMetrics.paneRadius
-                    color: SettingsMetrics.paneColor
-                    border.width: Theme.layerOutlineWidth
+                    color: Form.active ? "transparent" : SettingsMetrics.paneColor
+                    border.width: Form.active ? 0 : Theme.layerOutlineWidth
                     border.color: Theme.outlineMedium
                 }
 
@@ -436,8 +467,9 @@ DFloatingWindow {
                     width: settingsModal.isCompactMode ? body.width - body.paneInset * 2 : Math.min(body.paneSpace, SettingsMetrics.paneMaxWidth)
                     height: body.height - body.paneInset
                     radius: SettingsMetrics.paneRadius
-                    color: SettingsMetrics.paneColor
-                    border.width: Theme.layerOutlineWidth
+                    // Coreflame: the page sits straight on the frame, as in the mockup
+                    color: Form.active ? "transparent" : SettingsMetrics.paneColor
+                    border.width: Form.active ? 0 : Theme.layerOutlineWidth
                     border.color: Theme.outlineMedium
                     clip: true
 

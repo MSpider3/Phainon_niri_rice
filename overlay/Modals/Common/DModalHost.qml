@@ -68,6 +68,8 @@ Item {
     readonly property color effectiveBorderColor: frameOwnsConnectedChrome ? Theme.withAlpha(borderColor, 0) : borderColor
     readonly property real effectiveBorderWidth: frameOwnsConnectedChrome ? 0 : borderWidth
     readonly property real effectiveCornerRadius: frameOwnsConnectedChrome ? Theme.connectedSurfaceRadius : cornerRadius
+    // Coreflame: the form's own frame (parchment, obsidian plate or ash shard) replaces the stock surface.
+    readonly property bool formFrame: Form.active && !frameOwnsConnectedChrome
     property bool enableShadow: modalHandle.enableShadow
     property alias modalFocusScope: focusScope
     property Item handleFocusScope: null
@@ -546,7 +548,7 @@ Item {
 
         WindowBlur {
             targetWindow: contentWindow
-            blurEnabled: !root.frameOwnsConnectedChrome
+            blurEnabled: !root.frameOwnsConnectedChrome && !root.formFrame
             surfaceColor: root.effectiveBackgroundColor
             readonly property real s: Math.min(1, modalContainer.scaleValue)
             readonly property real op: Math.max(0, Math.min(1, (morph.value - 0.06) * 2))
@@ -820,7 +822,20 @@ Item {
                             }
                         }
 
+                        CfFrame {
+                            visible: root.formFrame
+                            parent: root._fluidMotionActive ? modalContainer : animatedContent
+                            anchors.fill: root._fluidMotionActive ? undefined : parent
+                            x: root._fluidMotionActive ? root.fluidBody.x : 0
+                            y: root._fluidMotionActive ? root.fluidBody.y : 0
+                            width: root._fluidMotionActive ? root.fluidBody.width : animatedContent.width
+                            height: root._fluidMotionActive ? root.fluidBody.height : animatedContent.height
+                            z: root._fluidMotionActive ? -1 : 0
+                            opacity: root._fluidMotionActive ? FluidGeometry.chromeOpacity(morph.value) : 1
+                        }
+
                         ElevationShadow {
+                            visible: !root.formFrame
                             parent: root._fluidMotionActive ? modalContainer : animatedContent
                             anchors.fill: root._fluidMotionActive ? undefined : parent
                             x: root._fluidMotionActive ? root.fluidBody.x : 0
@@ -846,6 +861,7 @@ Item {
                             width: root._fluidMotionActive ? root.fluidBody.width : animatedContent.width
                             height: root._fluidMotionActive ? root.fluidBody.height : animatedContent.height
                             opacity: root._fluidMotionActive ? FluidGeometry.chromeOpacity(morph.value) : 1
+                            visible: !root.formFrame
                             radius: root.effectiveCornerRadius
                             color: "transparent"
                             border.color: root.frameOwnsConnectedChrome ? Theme.withAlpha(BlurService.borderColor, 0) : BlurService.borderColor
