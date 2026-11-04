@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Shapes
 
-// Static cracks stretched over this item. Points are scaled to the item's size; strokes keep their
-// pixel width at any size. Drawn once: no timers, no layer.
-//   kind "gold"   Khaslana's golden blood: a dark rim, gold, and a light core (pattern "veins")
+// Static cracks stretched over this item. Points are scaled to the item's size; widths stay in
+// pixels at any size. Drawn once: no timers, no layer.
+//   kind "gold"   Khaslana's golden blood, as on his body in the wallpaper: filled slivers that swell
+//                 in the middle and taper to points, with jagged edges, chained along each crack
+//                 (pattern "veins")
 //   kind "violet" the Flame Reaver's fractures from a point of impact (pattern "impact")
 Item {
     id: root
@@ -28,11 +30,69 @@ Item {
     readonly property string trunkPath: width > 0 && height > 0 ? fit(trunks) : ""
     readonly property string branchPath: width > 0 && height > 0 && branches.length ? fit(branches) : ""
 
-    // [colour, trunk width, branch width] from the bottom layer up
-    readonly property var layers: kind === "gold" ? [["#1A0306", 24, 13], ["#E2A63A", 13, 7], ["#FFF0B5", 4, 2]] : [[Qt.rgba(5 / 255, 4 / 255, 10 / 255, 0.85), 5, 5], ["#D6CCFF", 1.6, 1.6]]
+    // [colour, trunk width, branch width] from the bottom layer up (violet only)
+    readonly property var layers: [[Qt.rgba(5 / 255, 4 / 255, 10 / 255, 0.85), 5, 5], ["#D6CCFF", 1.6, 1.6]]
+
+    // One sliver along a polyline: half-width swells as sin(pi t) from a point at each end; every
+    // vertex pushes one side out and the other in, by a fixed pattern, so the edges are jagged.
+    function sliver(pts, half, seed) {
+        const p = [pts[0]];
+        for (let i = 1; i < pts.length; i++)
+            p.push([(pts[i - 1][0] + pts[i][0]) / 2, (pts[i - 1][1] + pts[i][1]) / 2], pts[i]);
+        const s = [0];
+        for (let i = 1; i < p.length; i++)
+            s.push(s[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]));
+        const len = s[s.length - 1] || 1, jag = [0.4, -0.3, 0.15, -0.1], left = [], right = [];
+        for (let i = 1; i < p.length - 1; i++) {
+            const dx = p[i + 1][0] - p[i - 1][0], dy = p[i + 1][1] - p[i - 1][1], d = Math.hypot(dx, dy) || 1;
+            const w = half * Math.pow(Math.sin(Math.PI * s[i] / len), 0.7), j = jag[(i + seed) % 4];
+            left.push((p[i][0] - dy / d * w * (1 + j)).toFixed(1) + " " + (p[i][1] + dx / d * w * (1 + j)).toFixed(1));
+            right.unshift((p[i][0] + dy / d * w * (1 - j)).toFixed(1) + " " + (p[i][1] - dx / d * w * (1 - j)).toFixed(1));
+        }
+        const end = q => q[0].toFixed(1) + " " + q[1].toFixed(1);
+        return "M" + [end(p[0])].concat(left, [end(p[p.length - 1])], right).join(" L") + " Z";
+    }
+
+    // Each polyline cut into slivers of `chunk` segments (0: the whole line is one sliver), each a
+    // little wider or narrower than `half`.
+    function slivers(list, half, chunk) {
+        const sx = width / 1000, sy = height / 1000, out = [];
+        list.forEach((d, k) => {
+            const n = d.match(/-?\d+(\.\d+)?/g).map(Number), pts = [];
+            for (let i = 0; i + 1 < n.length; i += 2)
+                pts.push([n[i] * sx, n[i + 1] * sy]);
+            const step = chunk || pts.length - 1;
+            for (let a = 0; a < pts.length - 1; a += step)
+                out.push(sliver(pts.slice(a, a + step + 1), half * (0.7 + 0.15 * ((a * 7 + k * 3) % 5)), a + k));
+        });
+        return out.join(" ");
+    }
+
+    // [colour, share of the full half-width] from the bottom layer up: a dark ember rim, the gold, a light core
+    readonly property var goldLayers: [["#6E2A0C", 1], ["#E2A63A", 0.72], ["#FFF0B5", 0.26]]
 
     Repeater {
-        model: root.layers
+        model: root.kind === "gold" && root.width > 0 && root.height > 0 ? root.goldLayers : []
+
+        Shape {
+            id: goldLayer
+            required property var modelData
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                fillColor: goldLayer.modelData[0]
+                fillRule: ShapePath.WindingFill
+                strokeColor: "transparent"
+                PathSvg {
+                    path: root.slivers(root.trunks, 10 * root.trunk * goldLayer.modelData[1], 2) + " " + root.slivers(root.branches, 5.5 * root.branch * goldLayer.modelData[1], 0)
+                }
+            }
+        }
+    }
+
+    Repeater {
+        model: root.kind === "gold" ? [] : root.layers
 
         Shape {
             id: crackLayer
