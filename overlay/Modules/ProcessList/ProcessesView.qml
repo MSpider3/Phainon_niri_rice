@@ -19,6 +19,55 @@ DCard {
     property bool active: visible
     readonly property alias listView: processListView
     readonly property alias sortChips: sortChips
+
+    // Coreflame: each process's CPU share under its number, one look per form (the v3 mockup):
+    // Phainon a navy line on cream, Khaslana ten red blocks capped in gold, the Flame Reaver ten
+    // skewed violet blocks. Nothing outside a Coreflame form.
+    component ShareBar: Item {
+        id: bar
+        property real share: 0
+        readonly property real clamped: Math.max(0, Math.min(1, share))
+        readonly property int lit: Math.round(clamped * 10)
+
+        visible: Form.active
+        height: Form.phainon ? 6 : (Form.khaslana ? 10 : 9)
+
+        Rectangle {
+            visible: Form.phainon
+            anchors.fill: parent
+            radius: 3
+            color: "#E4DAC0"
+
+            Rectangle {
+                width: parent.width * bar.clamped
+                height: parent.height
+                radius: 3
+                color: "#334786"
+            }
+        }
+
+        Row {
+            id: blocks
+            visible: !Form.phainon
+            anchors.fill: parent
+            spacing: Form.khaslana ? 2 : 3
+
+            Repeater {
+                model: bar.visible && !Form.phainon ? 10 : 0
+
+                Rectangle {
+                    required property int index
+                    width: (bar.width - 9 * blocks.spacing) / 10
+                    height: bar.height
+                    color: Form.khaslana ? (index < bar.lit - 1 ? "#C2252F" : (index === bar.lit - 1 ? "#F2C75C" : "#2A1015")) : (index < bar.lit ? "#8F7BE0" : "#2C2840")
+                    // skewX(-20deg) about the middle
+                    transform: Matrix4x4 {
+                        matrix: Form.reaver ? Qt.matrix4x4(1, -0.364, 0, 0.182 * bar.height, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) : Qt.matrix4x4()
+                    }
+                }
+            }
+        }
+    }
     onSelectedIndexChanged: {
         if (keyboardNavigationActive)
             selectionScroll.schedule();
@@ -334,10 +383,13 @@ DCard {
                         verticalAlignment: Text.AlignVCenter
                         horizontalAlignment: chip.index === 0 ? Text.AlignLeft : Text.AlignRight
                         elide: Text.ElideRight
-                        text: chip.modelData
-                        font.pixelSize: Theme.fontSizeSmall
-                        font.weight: chip.selected ? Theme.fontWeightMedium : Font.Normal
-                        color: chip.selected ? Theme.onSecondaryContainer : Theme.onSurfaceVariant
+                        // Coreflame: the mockup's table heads, small caps in each form's ink
+                        text: !Form.active ? chip.modelData : (Form.reaver ? chip.modelData.toLowerCase() : chip.modelData.toUpperCase())
+                        font.family: Form.active ? (Form.khaslana ? "Cinzel" : "Chakra Petch") : Theme.fontFamily
+                        font.pixelSize: Form.active ? (Form.reaver ? 12 : 11) : Theme.fontSizeSmall
+                        font.letterSpacing: Form.active ? (Form.reaver ? 1.2 : 1.8) : 0
+                        font.weight: Form.active && !Form.reaver ? Font.DemiBold : (chip.selected ? Theme.fontWeightMedium : Font.Normal)
+                        color: !Form.active ? (chip.selected ? Theme.onSecondaryContainer : Theme.onSurfaceVariant) : (Form.phainon ? "#8A6418" : (Form.khaslana ? "#E0B04A" : "#B9A8FF"))
                     }
 
                     MouseArea {
@@ -408,6 +460,14 @@ DCard {
                     root.toggleExpand();
                 }
                 onKillRequested: root.requestKill(index)
+
+                // Under the CPU number: the row's right margin, then the action, PID and memory columns
+                ShareBar {
+                    share: (modelData?.cpu ?? 0) / 100
+                    x: parent.width - Theme.spacingL - ProcessListMetrics.actionColumnWidth - ProcessListMetrics.pidColumnWidth - ProcessListMetrics.memoryColumnWidth - ProcessListMetrics.cpuColumnWidth - 3 * Theme.spacingS
+                    y: parent.rowHeight - height - 5
+                    width: ProcessListMetrics.cpuColumnWidth
+                }
                 onContextMenuRequested: (mouseX, mouseY) => {
                     if (!root.contextMenu)
                         return;

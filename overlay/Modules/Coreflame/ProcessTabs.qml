@@ -1,21 +1,23 @@
 import QtQuick
+import QtQuick.Shapes
 import qs.Common
-import qs.DCommon.Widgets
 import qs.Widgets
+import "Numerals.js" as Numerals
 
-// The system monitor's four tabs, one look per form: soft paper pills (Phainon), cut gold plates
-// (Khaslana), plain lowercase words with a violet underline and an ember on change (Flame Reaver).
+// The system monitor's four tabs, one look per form (the v3 mockup): Phainon cream capsules with
+// the picked one in navy; Khaslana square plates numbered I-IV like their keys, the picked one red
+// with a gold edge and a hard offset; the Flame Reaver torn slips numbered as their keys, lower case,
+// the picked one violet with an ember on change.
 Row {
     id: root
 
     property var tabs: []
     property int current: 0
-    readonly property var icons: ["list_alt", "monitoring", "storage", "computer"]
 
     signal picked(int index)
 
-    height: 34
-    spacing: Form.reaver ? 2 : 6
+    height: 30
+    spacing: 6
 
     Repeater {
         model: root.tabs
@@ -26,7 +28,7 @@ Row {
             required property int index
             readonly property bool selected: root.current === index
 
-            width: (root.width - root.spacing * (root.tabs.length - 1)) / root.tabs.length
+            width: label.implicitWidth + 28
             height: root.height
 
             onSelectedChanged: {
@@ -34,48 +36,50 @@ Row {
                     ember.flare();
             }
 
-            CfSurface {
-                anchors.fill: parent
-                visible: !Form.reaver && (tab.selected || hover.hovered)
-                color: tab.selected ? Theme.withAlpha(Theme.primary, Form.khaslana ? 0.22 : 0.16) : Theme.withAlpha(Theme.surfaceText, 0.06)
-                edgeColor: Theme.withAlpha(Theme.primary, tab.selected ? 0.9 : 0.3)
-                edgeWidth: Form.khaslana && tab.selected ? 1 : 0
-                radius: height / 2
-                cut: 8
-            }
-
-            Row {
-                anchors.centerIn: parent
-                spacing: 6
-
-                DIcon {
-                    visible: !Form.reaver
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: root.icons[tab.index] ?? ""
-                    size: 16
-                    color: tab.selected ? Theme.primary : Theme.surfaceVariantText
-                }
-
-                StyledText {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Form.reaver ? tab.modelData.toLowerCase() : tab.modelData
-                    font.family: Form.display(Theme.fontFamily)
-                    font.pixelSize: Theme.fontSizeMedium
-                    font.weight: tab.selected ? Font.DemiBold : Font.Medium
-                    font.letterSpacing: Form.khaslana ? 0.8 : 0
-                    color: tab.selected ? (Form.reaver ? Theme.surfaceText : Theme.primary) : Theme.surfaceVariantText
-                }
-            }
-
-            // Flame Reaver: the chosen word is underlined in his lining violet.
+            // Khaslana: the hard red offset under the picked plate
             Rectangle {
-                visible: Form.reaver && tab.selected
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 3
-                width: parent.width * 0.5
-                height: 1.5
-                color: Theme.live
+                visible: Form.khaslana && tab.selected
+                x: 3
+                y: 3
+                width: parent.width
+                height: parent.height
+                color: "#3A0A12"
+            }
+
+            Rectangle {
+                visible: !Form.reaver
+                anchors.fill: parent
+                radius: Form.phainon ? height / 2 : 0
+                color: Form.phainon ? (tab.selected ? "#334786" : (hover.hovered ? "#F3ECDB" : "#FBF9F3")) : (tab.selected ? "#8E1424" : (hover.hovered ? "#1A0D10" : "transparent"))
+                border.width: 1
+                border.color: Form.phainon ? (tab.selected ? "#334786" : "#DCCDA6") : (tab.selected ? "#F2C75C" : "#8A5A2B")
+            }
+
+            // Flame Reaver: a torn slip
+            Shape {
+                visible: Form.reaver
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+
+                ShapePath {
+                    fillColor: tab.selected ? "#8F7BE0" : (hover.hovered ? "#262038" : "#1C1828")
+                    strokeColor: "transparent"
+                    PathPolyline {
+                        path: Form.reaver ? [Qt.point(0, 0), Qt.point(tab.width, tab.height * 0.1), Qt.point(tab.width * 0.96, tab.height), Qt.point(tab.width * 0.03, tab.height * 0.9), Qt.point(0, 0)] : []
+                    }
+                }
+            }
+
+            Text {
+                id: label
+                anchors.centerIn: parent
+                textFormat: Text.StyledText
+                text: Form.khaslana ? `<font color="${tab.selected ? "#F5D27A" : "#B0824A"}" size="1">${Numerals.roman(tab.index + 1)}</font>&nbsp;&nbsp;${tab.modelData.toUpperCase()}` : (Form.reaver ? (tab.index + 1) + " " + tab.modelData.toLowerCase() : tab.modelData)
+                font.family: Form.khaslana ? "Cinzel" : (Form.reaver ? "Chakra Petch" : "Marcellus")
+                font.pixelSize: Form.khaslana ? 11 : 13
+                font.weight: Form.khaslana || (Form.reaver && tab.selected) ? Font.DemiBold : Font.Normal
+                font.letterSpacing: Form.khaslana ? 1.3 : 0
+                color: Form.phainon ? (tab.selected ? "#F7F3E8" : "#334786") : (Form.khaslana ? (tab.selected ? "#F5D27A" : "#C9B89E") : (tab.selected ? "#0D0B14" : "#A8A4BC"))
             }
 
             CfEmber {

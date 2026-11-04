@@ -18,7 +18,8 @@ PanelWindow {
     required property var targetScreen
     property int strip: 40
     property bool shown: false
-    property real reveal: shown ? 1 : 0
+    property real opening: shown ? 1 : 0
+    readonly property real reveal: Motion.step(opening)
 
     property int currentTab: 0
     property string searchText: ""
@@ -55,8 +56,11 @@ PanelWindow {
     function focusContent() {
         if (currentTab === 0 && searchField.visible)
             searchField.forceActiveFocus();
-        else
+        else {
+            // Else the scope hands focus straight back to the hidden field, which then eats the 1-4 keys
+            searchField.setFocus(false);
             scope.forceActiveFocus();
+        }
     }
 
     onCurrentTabChanged: {
@@ -94,10 +98,10 @@ PanelWindow {
         right: true
     }
 
-    Behavior on reveal {
+    Behavior on opening {
         NumberAnimation {
-            duration: Theme.mediumDuration
-            easing.type: Form.phainon ? Easing.OutBack : (Form.khaslana ? Easing.InOutCubic : Easing.OutCubic)
+            duration: Motion.openMs
+            easing.type: Motion.openEasing
             easing.overshoot: 0.6
         }
     }
@@ -115,207 +119,187 @@ PanelWindow {
     Item {
         id: panel
 
-        // Grows out of the island: from its width and strip height to the full panel.
+        // Grows out of the island: from its width to the full panel.
         x: Math.round((mon.width - width) / 2)
+        y: sheet.topFor(mon.strip)
         width: Math.round(420 + (mon.panelWidth - 420) * mon.reveal)
-        height: Math.round(mon.strip + (mon.fullHeight - mon.strip) * mon.reveal)
-        clip: true
-
-        CfTab {
-            id: plate
-            anchors.fill: parent
-            side: "center"
-        }
-
-        CfOrnament {
-            id: ornament
-            anchors.fill: parent
-        }
-
-        Connections {
-            target: mon
-
-            function onShownChanged() {
-                if (mon.shown)
-                    ornament.play();
-            }
-        }
+        height: Math.round(60 + (mon.fullHeight - 60) * mon.reveal)
 
         MouseArea {
             anchors.fill: parent
             onClicked: contextMenu.dismiss()
         }
 
-        // Title
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            height: mon.strip
-            spacing: 8
-
-            CfGlyph {
-                anchors.verticalCenter: parent.verticalCenter
-                name: Form.reaver ? "mask" : "law"
-                size: Form.reaver ? 15 : 18
-                strokeWidth: Form.reaver ? 1.6 : 1.9
-                color: Form.reaver ? Theme.live : Theme.primary
-            }
-
-            StyledText {
-                anchors.verticalCenter: parent.verticalCenter
-                text: mon.tx("Law · System")
-                font.family: Form.display(Theme.fontFamily)
-                font.pixelSize: Theme.fontSizeLarge
-                font.weight: Font.DemiBold
-                color: Theme.surfaceText
-            }
+        // Khaslana: the red block tide hanging under the plate
+        CfTide {
+            visible: Form.khaslana
+            y: parent.height + 8
+            width: parent.width
+            height: 150
+            opacity: mon.reveal
+            seed: 34
+            liquid: 0
+            cubes: Form.khaslana ? 22 : 0
         }
 
-        FocusScope {
-            id: scope
-
-            x: 18
-            y: mon.strip + 4
-            width: mon.panelWidth - 36
-            // Stays above the Flame Reaver's torn hem.
-            height: mon.fullHeight - y - plate.hem - 8
+        // Khaslana: a run of golden blood breaking out from under the plate's left edge
+        CfSliver {
+            visible: Form.khaslana
+            x: -60
+            y: Math.round(parent.height * 0.58)
+            width: 260
+            height: 130
             opacity: mon.reveal
-            focus: true
+        }
 
-            Keys.onPressed: event => {
-                if (contextMenu.visible || contextMenu.confirmationOpen)
-                    return;
-                switch (event.key) {
-                case Qt.Key_1:
-                case Qt.Key_2:
-                case Qt.Key_3:
-                case Qt.Key_4:
-                    if (searchField.getActiveFocus())
+        CfSheet {
+            id: sheet
+            anchors.fill: parent
+            // Only while it opens: at rest Khaslana's red offset hangs outside the plate
+            clip: mon.reveal < 1
+            title: "Law · System"
+            glyph: "law"
+            count: mon.tx("↓ " + Format.formatRate(DgopService.networkRxRate) + "  ↑ " + Format.formatRate(DgopService.networkTxRate))
+
+            FocusScope {
+                id: scope
+
+                anchors.fill: parent
+                opacity: mon.reveal
+                focus: true
+
+                Keys.onPressed: event => {
+                    if (contextMenu.visible || contextMenu.confirmationOpen)
                         return;
-                    mon.currentTab = event.key - Qt.Key_1;
-                    event.accepted = true;
-                    return;
-                case Qt.Key_Escape:
-                    mon.close();
-                    event.accepted = true;
-                    return;
-                case Qt.Key_F:
-                    if (event.modifiers & Qt.ControlModifier) {
-                        mon.currentTab = 0;
-                        searchField.forceActiveFocus();
+                    switch (event.key) {
+                    case Qt.Key_1:
+                    case Qt.Key_2:
+                    case Qt.Key_3:
+                    case Qt.Key_4:
+                        if (searchField.getActiveFocus())
+                            return;
+                        mon.currentTab = event.key - Qt.Key_1;
                         event.accepted = true;
                         return;
+                    case Qt.Key_Escape:
+                        mon.close();
+                        event.accepted = true;
+                        return;
+                    case Qt.Key_F:
+                        if (event.modifiers & Qt.ControlModifier) {
+                            mon.currentTab = 0;
+                            searchField.forceActiveFocus();
+                            event.accepted = true;
+                            return;
+                        }
+                        break;
                     }
-                    break;
-                }
-                if (mon.currentTab === 0 && processesLoader.item)
-                    processesLoader.item.handleKey(event);
-            }
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: Theme.spacingS
-                visible: DgopService.dgopAvailable
-
-                ProcessTabs {
-                    Layout.fillWidth: true
-                    // Clear of Khaslana's corner blocks and Phainon's wing.
-                    Layout.leftMargin: 24
-                    Layout.rightMargin: 24
-                    tabs: mon.tabs
-                    current: mon.currentTab
-                    onPicked: index => mon.currentTab = index
+                    if (mon.currentTab === 0 && processesLoader.item)
+                        processesLoader.item.handleKey(event);
                 }
 
-                ProcessSystemHeader {
-                    Layout.fillWidth: true
-                    visible: mon.currentTab === 0
-                }
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: Theme.spacingS
+                    visible: DgopService.dgopAvailable
 
-                ProcessSummary {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: false
-                    visible: mon.currentTab === 0
-                }
+                    ProcessTabs {
+                        tabs: mon.tabs
+                        current: mon.currentTab
+                        onPicked: index => mon.currentTab = index
+                    }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spacingM
-                    visible: mon.currentTab === 0
-
-                    DSearchField {
-                        id: searchField
+                    ProcessSystemHeader {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.buttonHeightS
-                        placeholderText: mon.tx("Search processes...")
-                        text: mon.searchText
-                        onTextChanged: mon.searchText = text
-                        ignoreUpDownKeys: true
-                        keyForwardTargets: [scope]
-                    }
-
-                    ProcessFilterChips {
-                        Layout.preferredWidth: singleRowWidth
-                    }
-                }
-
-                Item {
-                    id: views
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-
-                    Loader {
-                        id: processesLoader
-                        anchors.fill: parent
-                        active: mon.visible
                         visible: mon.currentTab === 0
-                        sourceComponent: ProcessesView {
-                            active: mon.shown && mon.currentTab === 0
-                            searchText: mon.searchText
-                            expandedPid: mon.expandedPid
-                            contextMenu: contextMenu
-                            onExpandedPidChanged: mon.expandedPid = expandedPid
+                    }
+
+                    ProcessSummary {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: false
+                        visible: mon.currentTab === 0
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spacingM
+                        visible: mon.currentTab === 0
+
+                        DSearchField {
+                            id: searchField
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Theme.buttonHeightS
+                            placeholderText: mon.tx("Search processes...")
+                            text: mon.searchText
+                            onTextChanged: mon.searchText = text
+                            ignoreUpDownKeys: true
+                            keyForwardTargets: [scope]
+                        }
+
+                        ProcessFilterChips {
+                            Layout.preferredWidth: singleRowWidth
                         }
                     }
 
-                    Loader {
-                        anchors.fill: parent
-                        active: mon.visible
-                        visible: mon.currentTab === 1
-                        sourceComponent: PerformanceView {}
+                    Item {
+                        id: views
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+
+                        Loader {
+                            id: processesLoader
+                            anchors.fill: parent
+                            active: mon.visible
+                            visible: mon.currentTab === 0
+                            sourceComponent: ProcessesView {
+                                active: mon.shown && mon.currentTab === 0
+                                searchText: mon.searchText
+                                expandedPid: mon.expandedPid
+                                contextMenu: contextMenu
+                                onExpandedPidChanged: mon.expandedPid = expandedPid
+                            }
+                        }
+
+                        Loader {
+                            anchors.fill: parent
+                            active: mon.visible
+                            visible: mon.currentTab === 1
+                            sourceComponent: PerformanceView {}
+                        }
+
+                        Loader {
+                            anchors.fill: parent
+                            active: mon.visible
+                            visible: mon.currentTab === 2
+                            sourceComponent: DisksView {}
+                        }
+
+                        Loader {
+                            anchors.fill: parent
+                            active: mon.visible
+                            visible: mon.currentTab === 3
+                            sourceComponent: SystemView {}
+                        }
                     }
 
-                    Loader {
-                        anchors.fill: parent
-                        active: mon.visible
-                        visible: mon.currentTab === 2
-                        sourceComponent: DisksView {}
-                    }
-
-                    Loader {
-                        anchors.fill: parent
-                        active: mon.visible
-                        visible: mon.currentTab === 3
-                        sourceComponent: SystemView {}
+                    // Stock footer readouts: network, disk, CPU, memory.
+                    StyledText {
+                        Layout.alignment: Qt.AlignRight
+                        text: mon.tx("disk") + " ↓" + Format.formatRate(DgopService.diskReadRate) + " ↑" + Format.formatRate(DgopService.diskWriteRate) + "   " + mon.tx("CPU") + " " + DgopService.cpuUsage.toFixed(1) + "%   " + DgopService.formatSystemMemory(DgopService.usedMemoryKB) + " / " + DgopService.formatSystemMemory(DgopService.totalMemoryKB)
+                        font.pixelSize: Theme.fontSizeSmall
+                        font.family: Theme.monoFontFamily
+                        color: Theme.surfaceVariantText
                     }
                 }
 
-                // Stock footer readouts: network, disk, CPU, memory.
                 StyledText {
-                    Layout.alignment: Qt.AlignRight
-                    text: "↓" + Format.formatRate(DgopService.networkRxRate) + " ↑" + Format.formatRate(DgopService.networkTxRate) + "   " + mon.tx("disk") + " ↓" + Format.formatRate(DgopService.diskReadRate) + " ↑" + Format.formatRate(DgopService.diskWriteRate) + "   " + mon.tx("CPU") + " " + DgopService.cpuUsage.toFixed(1) + "%   " + DgopService.formatSystemMemory(DgopService.usedMemoryKB) + " / " + DgopService.formatSystemMemory(DgopService.totalMemoryKB)
-                    font.pixelSize: Theme.fontSizeSmall
-                    font.family: Theme.monoFontFamily
-                    color: Theme.surfaceVariantText
+                    anchors.centerIn: parent
+                    visible: !DgopService.dgopAvailable
+                    text: mon.tx("The system monitor needs the DMS service (dgop), which is not running.")
+                    font.pixelSize: Theme.fontSizeMedium
+                    color: Theme.error
                 }
-            }
-
-            StyledText {
-                anchors.centerIn: parent
-                visible: !DgopService.dgopAvailable
-                text: mon.tx("The system monitor needs the DMS service (dgop), which is not running.")
-                font.pixelSize: Theme.fontSizeMedium
-                color: Theme.error
             }
         }
 
