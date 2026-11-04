@@ -354,9 +354,9 @@ Item {
                 width: 1400
                 height: 538
                 kind: "gold"
-                trunk: 0.45
-                branch: 0.5
-                opacity: 0.65
+                // small marks in the empty parts: the hero plate's right side, the flame-chase
+                // plate's right end, the heralds' open floor and the foot
+                spots: [[0.36, 0.08, 0, 30, 1.3], [0.44, 0.6, 1, -10, 0.9], [0.86, 0.7, 2, 70, 1.1], [0.36, 0.995, 0, -8, 1]]
             }
 
             // The Black Tide spilling off the bottom edge

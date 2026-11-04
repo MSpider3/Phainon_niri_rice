@@ -1173,9 +1173,6 @@ PanelWindow {
             CfCracks {
                 anchors.fill: parent
                 kind: "gold"
-                trunk: 0.5
-                branch: 0.5
-                opacity: 0.55
             }
 
             // The empty stage closes it, like a click outside

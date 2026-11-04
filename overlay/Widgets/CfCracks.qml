@@ -3,17 +3,58 @@ import QtQuick.Shapes
 
 // Static cracks stretched over this item. Points are scaled to the item's size; widths stay in
 // pixels at any size. Drawn once: no timers, no layer.
-//   kind "gold"   Khaslana's golden blood, as on his body in the wallpaper: filled slivers that swell
-//                 in the middle and taper to points, with jagged edges, chained along each crack
-//                 (pattern "veins")
+//   kind "gold"   Khaslana's golden blood, as on his body in the wallpaper: a few small marks at set
+//                 `spots` (pattern "marks"), each a filled sliver that swells in the middle and
+//                 tapers to points, a fixed size whatever the item's size. Pattern "veins" is the
+//                 older long crack stretched over the whole item.
 //   kind "violet" the Flame Reaver's fractures from a point of impact (pattern "impact")
 Item {
     id: root
 
     property string kind: "gold"
-    property string pattern: kind === "gold" ? "veins" : "impact"
+    property string pattern: kind === "gold" ? "marks" : "impact"
     property real trunk: 1     // width multiplier for trunks
     property real branch: 1    // width multiplier for branches
+
+    // Where the marks go: [x, y, shape, angle in degrees, size]. x and y up to 1 are shares of
+    // the item's size, above 1 pixels. Callers place them clear of their text; the default keeps
+    // to the edges.
+    property var spots: [[0.985, 0.2, 0, 100, 1], [0.015, 0.72, 1, -15, 0.9], [0.62, 0.985, 2, -100, 0.9]]
+
+    // The marks' shapes in pixels from their root: a broken run with a side branch, a bent run
+    // with a short branch, and a small flame
+    readonly property var shapes: [
+        {
+            "t": [[0, 0], [16, -5], [30, 2], [46, -3], [62, 4]],
+            "b": [[30, 2], [36, 13], [44, 20]]
+        },
+        {
+            "t": [[0, 0], [14, 8], [24, 22], [38, 28], [50, 42]],
+            "b": [[24, 22], [12, 34]]
+        },
+        {
+            "t": [[0, 0], [9, -10], [13, -24], [22, -36]],
+            "b": []
+        }
+    ]
+
+    // A shape's points turned, sized and moved to its spot
+    function place(pts, spot) {
+        const a = spot[3] * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), k = spot[4];
+        const x0 = spot[0] <= 1 ? spot[0] * width : spot[0], y0 = spot[1] <= 1 ? spot[1] * height : spot[1];
+        return pts.map(p => [x0 + k * (p[0] * c - p[1] * s), y0 + k * (p[0] * s + p[1] * c)]);
+    }
+
+    function marks(half, branchHalf) {
+        const out = [];
+        spots.forEach((spot, i) => {
+            const shape = shapes[spot[2] % shapes.length];
+            out.push(sliver(place(shape.t, spot), half * spot[4], i));
+            if (shape.b.length)
+                out.push(sliver(place(shape.b, spot), branchHalf * spot[4], i + 1));
+        });
+        return out.join(" ");
+    }
 
     // On a 1000 x 1000 grid, from the v3 mockup's #veins and #crk symbols
     readonly property var trunks: pattern === "veins" ? ["M0 310 70 296 130 330 210 312 262 350 330 322 410 340 470 300 540 318 610 290 690 334 760 318 830 350 900 326 1000 340", "M262 350 300 420 276 500 330 560 310 640 372 700 350 790 400 860 380 1000"] : ["M500 500 380 420 300 430 180 330 60 300 0 240M300 430 280 520 200 560", "M500 500 560 380 540 300 620 160 600 60 660 0M620 160 720 140 800 60", "M500 500 640 520 760 470 880 520 1000 480M760 470 800 380", "M500 500 470 640 520 760 460 880 490 1000M520 760 620 800", "M500 500 380 590 250 600 120 720 0 760M250 600 230 700", "M500 500 610 640 700 700 760 850 900 1000", "M462 470 535 455 552 522 488 548 450 510z"]
@@ -85,7 +126,7 @@ Item {
                 fillRule: ShapePath.WindingFill
                 strokeColor: "transparent"
                 PathSvg {
-                    path: root.slivers(root.trunks, 7 * root.trunk * goldLayer.modelData[1], 2) + " " + root.slivers(root.branches, 4 * root.branch * goldLayer.modelData[1], 0)
+                    path: root.pattern === "marks" ? root.marks(4.5 * root.trunk * goldLayer.modelData[1], 2.6 * root.branch * goldLayer.modelData[1]) : root.slivers(root.trunks, 7 * root.trunk * goldLayer.modelData[1], 2) + " " + root.slivers(root.branches, 4 * root.branch * goldLayer.modelData[1], 0)
                 }
             }
         }

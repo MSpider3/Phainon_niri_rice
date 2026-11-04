@@ -578,10 +578,10 @@ PanelWindow {
         // Khaslana: a run of golden blood breaking off the plate's right edge
         CfSliver {
             visible: Form.khaslana
-            x: parent.width - 260
+            x: parent.width - 40
             y: Math.round(parent.height * 0.44)
-            width: 300
-            height: 150
+            width: 120
+            height: 60
             opacity: board.reveal
         }
     }

@@ -540,9 +540,7 @@ Item {
                         CfCracks {
                             anchors.fill: parent
                             kind: "gold"
-                            trunk: 0.5
-                            branch: 0.5
-                            opacity: 0.18
+                            opacity: 0.5
                         }
                     }
 

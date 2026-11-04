@@ -144,19 +144,6 @@ Item {
 
     Loader {
         active: sheet.kh
-        sourceComponent: CfCracks {
-            width: sheet.width
-            height: sheet.gridBottom
-            kind: "gold"
-            // thin and dim: veins in the obsidian, not bars across the numbers
-            trunk: 0.35
-            branch: 0.4
-            opacity: 0.6
-        }
-    }
-
-    Loader {
-        active: sheet.kh
         y: sheet.gridBottom
         x: 6
         sourceComponent: CfTide {
@@ -170,6 +157,18 @@ Item {
             blockMax: 40
             cubes: 16
             cubeDepth: 110
+        }
+    }
+
+    Loader {
+        active: sheet.kh
+        sourceComponent: CfCracks {
+            width: sheet.width
+            height: sheet.gridBottom
+            kind: "gold"
+            // a few small marks clear of the text: the header's empty right end, and two dripping
+            // off the foot into the tide (drawn over it)
+            spots: [[0.84, 30, 0, 10, 1.1], [0.6, 0.999, 2, 168, 1], [0.24, 0.999, 1, 75, 0.9]]
         }
     }
 

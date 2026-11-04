@@ -116,10 +116,10 @@ PanelWindow {
 
         CfSliver {
             visible: Form.khaslana
-            x: parent.width - 200
+            x: parent.width - 40
             y: Math.round(parent.height * 0.3)
-            width: 260
-            height: 130
+            width: 110
+            height: 55
             opacity: board.reveal
         }
 
