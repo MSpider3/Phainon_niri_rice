@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -132,12 +133,38 @@ Column {
             values: DgopService.networkHistory.rx
             secondaryValues: DgopService.networkHistory.tx
             historyLength: 60
-            lineColor: Form.reaver ? Theme.live : Theme.primary
+            // The Flame Reaver draws its own broken line below
+            lineColor: Form.reaver ? "transparent" : Theme.primary
             secondaryLineColor: Theme.withAlpha(Theme.surfaceText, 0.5)
             lineWidth: Form.phainon ? 2 : 1.5
             // Khaslana a hard gold line, the Flame Reaver a bare violet one: no fill under either
             fillOpacity: Form.active && !Form.phainon ? 0 : 0.12
             curved: Form.phainon || !Form.active
+        }
+
+        // Flame Reaver: the minute as a broken violet line (the mockup's 14 px dashes, 3 px breaks)
+        Loader {
+            active: Form.reaver
+            anchors.fill: graph
+
+            sourceComponent: Shape {
+                preferredRendererType: Shape.CurveRenderer
+
+                ShapePath {
+                    strokeColor: Theme.live
+                    strokeWidth: graph.lineWidth
+                    strokeStyle: ShapePath.DashLine
+                    // in stroke widths
+                    dashPattern: [14 / graph.lineWidth, 3 / graph.lineWidth]
+                    fillColor: "transparent"
+                    capStyle: ShapePath.FlatCap
+                    joinStyle: ShapePath.MiterJoin
+
+                    PathSvg {
+                        path: graph.linePath
+                    }
+                }
+            }
         }
 
         // Flame Reaver: the minute ends in one ember

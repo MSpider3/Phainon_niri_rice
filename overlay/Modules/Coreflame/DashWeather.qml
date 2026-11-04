@@ -28,6 +28,9 @@ Column {
     readonly property real arcWidth: (width - 3 * 12 - 2 * fourth) / 2
     readonly property color accent: Form.reaver ? Theme.live : Theme.primary
     readonly property string numberFont: Form.phainon || !Form.active ? Theme.fontFamily : Theme.monoFontFamily
+    // The Flame Reaver's readings sit on shards: the mockup's dv-p1..p6 clip polygons and one
+    // five-cornered pane, corners clockwise from top-left as fractions of the card
+    readonly property var shards: [[[0, 0], [1, 0.03], [0.97, 1], [0.02, 0.94]], [[0.04, 0], [1, 0], [0.96, 1], [0, 0.88]], [[0.03, 0], [1, 0], [1, 0.92], [0, 1]], [[0, 0.06], [1, 0], [0.98, 1], [0.03, 0.95]], [[0.02, 0.04], [1, 0], [0.97, 0.96], [0, 1]], [[0, 0], [1, 0.1], [0.98, 1], [0.01, 0.92]], [[0, 0.05], [0.58, 0], [1, 0.08], [0.95, 1], [0.03, 0.93]]]
 
     function tx(text) {
         return Form.reaver ? String(text).toLowerCase() : text;
@@ -174,6 +177,7 @@ Column {
             numeral: "I"
             glyph: "sky"
             label: sky.w.city || "Weather"
+            poly: Form.reaver ? sky.shards[0] : null
 
             Column {
                 anchors.verticalCenter: parent.verticalCenter
@@ -188,7 +192,7 @@ Column {
                 }
 
                 StyledText {
-                    width: 260 - (Form.reaver ? 0 : 76)
+                    width: 260 - (Form.reaver ? 12 : 76)
                     wrapMode: Text.NoWrap
                     elide: Text.ElideRight
                     text: sky.tx(sky.ok ? WeatherService.getWeatherCondition(sky.w.wCode) : "No weather data")
@@ -224,6 +228,7 @@ Column {
             numeral: "II"
             glyph: "time"
             label: "Hourly"
+            poly: Form.reaver ? sky.shards[1] : null
             readonly property real slot: width / Math.max(1, sky.hours.length)
 
             DSparkline {
@@ -243,7 +248,8 @@ Column {
             }
 
             Row {
-                x: -14
+                // the hours span the whole card (a shard's margin is 26, a plate's 15)
+                x: Form.reaver ? -26 : -14
                 anchors.top: parent.top
 
                 Repeater {
@@ -444,6 +450,7 @@ Column {
             width: sky.arcWidth * 2 + 12
             height: parent.height
             label: "sky"
+            poly: Form.reaver ? sky.shards[3] : null
 
             Column {
                 anchors.verticalCenter: parent.verticalCenter
@@ -486,6 +493,7 @@ Column {
             height: parent.height
             glyph: "ocean"
             label: "Humidity"
+            poly: Form.reaver ? sky.shards[2] : null
 
             // Phainon: the water stands in the card as high as the air is wet
             Rectangle {
@@ -505,8 +513,9 @@ Column {
                 note: sky.w.dewPoint !== null && sky.w.dewPoint !== undefined ? "Dew " + WeatherService.formatTemp(Math.round(sky.w.dewPoint)) : ""
             }
 
+            // Khaslana's meter; the Flame Reaver shows the plain number
             CfBlade {
-                visible: !Form.phainon
+                visible: !Form.phainon && !Form.reaver
                 anchors.bottom: parent.bottom
                 width: parent.width
                 meter: true
@@ -520,6 +529,7 @@ Column {
             height: parent.height
             glyph: "passage"
             label: "Wind"
+            poly: Form.reaver ? sky.shards[6] : null
 
             Reading {
                 anchors.verticalCenter: parent.verticalCenter
@@ -557,6 +567,7 @@ Column {
                 width: week.cardWidth
                 height: parent.height
                 highlighted: index === 0 && !Form.reaver
+                poly: Form.reaver ? sky.shards[(index + 4) % 6] : null
 
                 Column {
                     anchors.centerIn: parent

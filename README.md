@@ -64,7 +64,7 @@ Pick a form and the whole desktop follows: colours, shapes, fonts, wallpaper, GT
 - **Power menu** with lock, sleep, log out, restart DMS ("Rekindle"), restart and shut down. Hibernate ("Slumber") shows up too when your swap and kernel settings allow it.
 - **Lock screen.** In Phainon the clock moves to the calmest part of the wallpaper.
 - **Lock screen video.** After 15 seconds on the lock screen with no input, a muted video plays full screen while you are plugged in or above 50 % battery. Any key or mouse move brings the password field back.
-- **Window animation:** windows open and close with a short black-and-red eclipse, the "Black Tide" from Phainon's technique. On the Power Saver profile they just fade.
+- **Window animation:** windows open and close with a short black-and-red eclipse, the "Black Tide" from Phainon's technique. On battery or the Power Saver profile, niri's own animation plays instead.
 - **Opening and closing cinematics** play at the first start after boot and before a restart or shut down.
 - **A little Phainon chimera** in the corner that sleeps when your CPU is idle and runs faster the harder it works.
 - **Scroll on the island** to move between workspaces.

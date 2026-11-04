@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import qs.Common
 import qs.Services
 import qs.DCommon.Widgets
+import qs.DCommon.Common as DC
 import qs.Widgets
 import qs.Modules.ProcessList
 import "../../Common/Format.js" as Format
@@ -51,6 +52,148 @@ PanelWindow {
 
     function tx(text) {
         return Form.reaver ? String(text).toLowerCase() : text;
+    }
+
+    // Coreflame: the search field per form (the v3 mockup): a cream capsule, a square plate in gold,
+    // a dark slip in violet
+    readonly property var field: Form.phainon ? ({
+            "bg": "#FBF9F3",
+            "edge": "#DCCDA6",
+            "focus": "#A87A22",
+            "ink": "#1E2752",
+            "hint": "#4A5484",
+            "icon": "#A87A22"
+        }) : Form.khaslana ? ({
+            "bg": "#0B080B",
+            "edge": "#8A5A2B",
+            "focus": "#F2C75C",
+            "ink": "#F5D27A",
+            "hint": "#C9B89E",
+            "icon": "#E0B04A"
+        }) : ({
+            "bg": "#1C1828",
+            "edge": "transparent",
+            "focus": "#8F7BE0",
+            "ink": "#B9A8FF",
+            "hint": "#A8A4BC",
+            "icon": "#B9A8FF"
+        })
+
+    readonly property string cpuDetail: DgopService.cpuCores + (DgopService.cpuFrequency > 0 ? " × " + (DgopService.cpuFrequency / 1000).toFixed(1) + " GHz" : " cores")
+    readonly property string memoryDetail: DgopService.formatSystemMemory(DgopService.usedMemoryKB) + " / " + DgopService.formatSystemMemory(DgopService.totalMemoryKB)
+
+    // Coreflame: CPU or Memory as the v3 mockup draws it, in place of the stock header and cards:
+    // Phainon a cream card with a navy share line, Khaslana a dark block with its value in bold gold,
+    // the Flame Reaver a row of ten skewed violet blocks.
+    component Meter: Rectangle {
+        id: meter
+
+        property string label
+        property real share
+        property string percent
+        property string detail
+        property string khText
+        property string rvText
+
+        Layout.fillWidth: true
+        implicitHeight: Form.phainon ? 60 : (Form.khaslana ? 46 : 22)
+        radius: Form.phainon ? 12 : 0
+        color: Form.phainon ? "#FBF9F3" : (Form.khaslana ? "#160D10" : "transparent")
+        border.width: Form.phainon ? 1 : 0
+        border.color: "#DCCDA6"
+
+        Column {
+            visible: Form.phainon
+            anchors.fill: parent
+            anchors.leftMargin: 14
+            anchors.rightMargin: 14
+            anchors.topMargin: 10
+            spacing: 4
+
+            StyledText {
+                text: meter.label.toUpperCase()
+                font.family: "Chakra Petch"
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+                font.letterSpacing: 1.8
+                color: "#8A6418"
+            }
+
+            RowLayout {
+                width: parent.width
+                spacing: 10
+
+                StyledText {
+                    Layout.preferredWidth: 44
+                    text: meter.percent
+                    font.pixelSize: 14
+                    color: "#1E2752"
+                }
+
+                ShareBar {
+                    Layout.fillWidth: true
+                    share: meter.share
+                }
+
+                StyledText {
+                    Layout.preferredWidth: 120
+                    text: meter.detail
+                    font.pixelSize: 14
+                    color: "#4A5484"
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        Column {
+            visible: Form.khaslana
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            anchors.topMargin: 6
+            spacing: 2
+
+            StyledText {
+                text: meter.label
+                font.pixelSize: 13
+                color: "#F3E6CC"
+            }
+
+            StyledText {
+                width: parent.width
+                text: meter.khText
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                color: "#F5D27A"
+                elide: Text.ElideRight
+            }
+        }
+
+        RowLayout {
+            visible: Form.reaver
+            anchors.fill: parent
+            spacing: 10
+
+            StyledText {
+                Layout.preferredWidth: 70
+                text: meter.label.toLowerCase()
+                font.pixelSize: 14
+                color: "#E9E7F2"
+            }
+
+            ShareBar {
+                Layout.fillWidth: true
+                share: meter.share
+            }
+
+            StyledText {
+                Layout.preferredWidth: 140
+                text: meter.rvText.toLowerCase()
+                font.pixelSize: 14
+                color: "#A8A4BC"
+                elide: Text.ElideRight
+            }
+        }
     }
 
     function focusContent() {
@@ -211,13 +354,39 @@ PanelWindow {
 
                     ProcessSystemHeader {
                         Layout.fillWidth: true
-                        visible: mon.currentTab === 0
+                        visible: mon.currentTab === 0 && !Form.active
                     }
 
                     ProcessSummary {
                         Layout.fillWidth: true
                         Layout.fillHeight: false
-                        visible: mon.currentTab === 0
+                        visible: mon.currentTab === 0 && !Form.active
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        visible: mon.currentTab === 0 && Form.active
+                        columns: Form.reaver ? 1 : 2
+                        columnSpacing: Form.khaslana ? 6 : 12
+                        rowSpacing: 6
+
+                        Meter {
+                            label: I18n.tr("CPU", "processor label in system monitor")
+                            share: DgopService.cpuUsage / 100
+                            percent: DgopService.cpuUsage.toFixed(0) + "%"
+                            detail: mon.cpuDetail
+                            khText: percent + " · " + mon.cpuDetail
+                            rvText: percent + " · " + DgopService.cpuCores + " cores"
+                        }
+
+                        Meter {
+                            label: I18n.tr("Memory")
+                            share: DgopService.memoryUsage / 100
+                            percent: DgopService.memoryUsage.toFixed(0) + "%"
+                            detail: mon.memoryDetail
+                            khText: mon.memoryDetail
+                            rvText: mon.memoryDetail
+                        }
                     }
 
                     RowLayout {
@@ -234,6 +403,16 @@ PanelWindow {
                             onTextChanged: mon.searchText = text
                             ignoreUpDownKeys: true
                             keyForwardTargets: [scope]
+                            // Coreflame: per form from mon.field; otherwise the stock DSearchField values
+                            cornerRadius: !Form.active ? DC.Style.fullRadius(width, height) : (Form.phainon ? height / 2 : 0)
+                            backgroundColor: Form.active ? mon.field.bg : DC.Style.chipSurface
+                            normalBorderColor: Form.active ? mon.field.edge : DC.Style.outlineVariant
+                            focusedBorderColor: Form.active ? mon.field.focus : (DC.Style.focusRingWidth > 0 ? DC.Style.focusRingColor : searchField.normalBorderColor)
+                            borderWidth: Form.active ? 1 : DC.Style.outlineWidth
+                            textColor: Form.active ? mon.field.ink : DC.Style.surfaceText
+                            placeholderColor: Form.active ? mon.field.hint : DC.Style.surfaceTextSecondary
+                            leftIconColor: Form.active ? mon.field.icon : DC.Style.onSurfaceVariant
+                            leftIconFocusedColor: Form.active ? mon.field.icon : DC.Style.primary
                         }
 
                         ProcessFilterChips {
