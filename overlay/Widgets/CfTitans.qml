@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Common
 
 // The Flame-Chase: the twelve Titans in Coreflames.order, each as its CfGlyph, lit once earned.
@@ -12,8 +13,13 @@ Item {
     property real glyphSize: layout === "glyphs" ? 26 : (layout === "blocks" ? 34 : 32)
     property string fontFamily: Form.bodyFont
 
-    // [glyph name, Titan, lit]; re-read only when the earned list changes
-    readonly property var rows: Coreflames.order.map(n => [n, Coreflames.titans[n][0], Coreflames.has(n) && Coreflames.count >= 0])
+    // [glyph name, Titan, lit, how it is earned]; re-read only when the earned list changes
+    readonly property var rows: Coreflames.order.map(n => [n, Coreflames.titans[n][0], Coreflames.has(n) && Coreflames.count >= 0, Coreflames.titans[n][1]])
+
+    // Hovering a Titan says how its Coreflame is taken
+    function tip(row) {
+        return row[1] + " · " + row[3] + (row[2] ? " (taken)" : "");
+    }
     readonly property string unlit: rows.filter(r => !r[2]).map(r => r[1].toLowerCase()).join(" · ")
 
     implicitWidth: loader.item ? loader.item.implicitWidth : 0
@@ -35,6 +41,11 @@ Item {
                     required property var modelData
                     width: 50
                     spacing: 3
+                    HoverHandler {
+                        id: medHover
+                    }
+                    ToolTip.visible: medHover.hovered
+                    ToolTip.text: root.tip(modelData)
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: root.glyphSize + 12
@@ -75,6 +86,11 @@ Item {
                 Row {
                     required property var modelData
                     spacing: 7
+                    HoverHandler {
+                        id: blockHover
+                    }
+                    ToolTip.visible: blockHover.hovered
+                    ToolTip.text: root.tip(modelData)
                     Item {
                         width: root.glyphSize + 3
                         height: root.glyphSize + 3
@@ -132,6 +148,11 @@ Item {
                         size: root.glyphSize
                         strokeWidth: 1.5
                         color: modelData[2] ? "#B9A8FF" : "#4A4562"
+                        HoverHandler {
+                            id: glyphHover
+                        }
+                        ToolTip.visible: glyphHover.hovered
+                        ToolTip.text: root.tip(modelData)
                     }
                 }
             }
