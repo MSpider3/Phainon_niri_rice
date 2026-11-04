@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import qs.Common
@@ -43,14 +44,8 @@ PanelWindow {
         notepad.openExternalFile(path);
     }
 
-    function tx(text) {
-        return Form.reaver ? String(text).toLowerCase() : text;
-    }
-
     onShownChanged: {
-        if (shown)
-            ornament.play();
-        else
+        if (!shown)
             notepad.flushAutoSave();
     }
 
@@ -98,69 +93,91 @@ PanelWindow {
         id: panel
 
         x: Math.round((board.width - width) / 2)
+        y: sheet.topFor(board.strip)
         width: Math.round(420 + (board.panelWidth - 420) * board.reveal)
-        height: Math.round(board.strip + (board.fullHeight - board.strip) * board.reveal)
-        clip: true
+        height: Math.round(60 + (board.fullHeight - 60) * board.reveal)
 
-        CfTab {
-            id: tab
-            anchors.fill: parent
-            side: "center"
-        }
-
-        CfOrnament {
-            id: ornament
-            anchors.fill: parent
-        }
-
+        // Swallow clicks on the whole sheet so they don't close the window
         MouseArea {
             anchors.fill: parent
         }
 
-        Row {
-            x: 22
-            height: board.strip + 6
-            spacing: 8
+        // Khaslana: the Black Tide's cubes and a run of golden blood breaking off the right edge
+        CfTide {
+            visible: Form.khaslana
+            y: parent.height + 8
+            width: parent.width
+            height: 120
             opacity: board.reveal
+            seed: 47
+            liquid: 0
+            cubes: Form.khaslana ? 14 : 0
+        }
 
-            CfGlyph {
-                anchors.verticalCenter: parent.verticalCenter
-                name: Form.reaver ? "mask" : "reason"
-                size: 16
-                strokeWidth: 1.9
-                color: Form.reaver ? Theme.live : Theme.withAlpha(Theme.surfaceText, 0.6)
-            }
+        CfSliver {
+            visible: Form.khaslana
+            x: parent.width - 200
+            y: Math.round(parent.height * 0.3)
+            width: 260
+            height: 130
+            opacity: board.reveal
+        }
 
-            StyledText {
-                anchors.verticalCenter: parent.verticalCenter
-                text: board.tx("Reason · Notes")
-                font.family: Form.display(Theme.fontFamily)
-                font.pixelSize: Theme.fontSizeMedium
-                color: Theme.withAlpha(Theme.surfaceText, 0.8)
+        // The v3 mockup's codex (Phainon), script (Khaslana) or torn slab (Flame Reaver)
+        CfSheet {
+            id: sheet
+            anchors.fill: parent
+            // Only while it opens: at rest Khaslana's red offset hangs outside the plate
+            clip: board.reveal < 1
+            title: "Reason · Notes"
+            glyph: "reason"
+
+            // Laid out at full size from the start so the editor does not reflow while the panel grows.
+            Notepad {
+                id: notepad
+                width: parent.width
+                height: board.fullHeight - sheet.headerHeight - sheet.footerHeight
+                opacity: board.reveal
+                surfaceVisible: board.shown
+                onHideRequested: board.close()
+                onPopoutRequested: {
+                    board.close();
+                    PopoutService.openNotepadPopout();
+                }
             }
         }
 
-        Rectangle {
-            x: 22
-            y: board.strip + 6
-            width: board.panelWidth - 44
-            height: 1
-            color: Form.reaver ? Theme.withAlpha(Theme.live, 0.5) : Theme.withAlpha(Theme.outline, 0.6)
-        }
-
-        // Laid out at full size from the start so the editor does not reflow while the panel grows.
-        Notepad {
-            id: notepad
-            x: 16
-            y: board.strip + 14
-            width: board.panelWidth - 32
-            height: board.fullHeight - y - (Form.reaver ? tab.hem : 0) - 24
+        // Phainon: a gold ribbon marking the place, hanging over the top edge
+        Shape {
+            visible: Form.phainon
+            x: parent.width - 54 - width
+            y: -1
+            width: 22
+            height: 86
             opacity: board.reveal
-            surfaceVisible: board.shown
-            onHideRequested: board.close()
-            onPopoutRequested: {
-                board.close();
-                PopoutService.openNotepadPopout();
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                strokeColor: "transparent"
+                fillGradient: LinearGradient {
+                    x1: 0
+                    x2: 22
+                    GradientStop {
+                        position: 0
+                        color: "#A87A22"
+                    }
+                    GradientStop {
+                        position: 0.5
+                        color: "#E2B84A"
+                    }
+                    GradientStop {
+                        position: 1
+                        color: "#A87A22"
+                    }
+                }
+                PathPolyline {
+                    path: [Qt.point(0, 0), Qt.point(22, 0), Qt.point(22, 86), Qt.point(11, 70.5), Qt.point(0, 86), Qt.point(0, 0)]
+                }
             }
         }
     }
