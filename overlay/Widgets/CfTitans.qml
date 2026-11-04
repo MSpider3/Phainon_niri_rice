@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
+import QtQuick.Shapes
 import qs.Common
 
 // The Flame-Chase: the twelve Titans in Coreflames.order, each as its CfGlyph, lit once earned.
@@ -16,12 +18,134 @@ Item {
     // [glyph name, Titan, lit, how it is earned]; re-read only when the earned list changes
     readonly property var rows: Coreflames.order.map(n => [n, Coreflames.titans[n][0], Coreflames.has(n) && Coreflames.count >= 0, Coreflames.titans[n][1]])
 
-    // Hovering a Titan says how its Coreflame is taken
+    // Hovering a Titan says how its Coreflame is taken: [name, how]
     function tip(row) {
-        const text = row[1] + " · " + row[3] + (row[2] ? " (taken)" : "");
-        return Form.reaver ? text.toLowerCase() : text;
+        const parts = [row[1], row[3] + (row[2] ? " (taken)" : "")];
+        return Form.reaver ? parts.map(p => p.toLowerCase()) : parts;
+    }
+    // The Titan under the pointer; one tooltip follows it instead of one per Titan
+    property Item hovered: null
+    function hover(item, on) {
+        if (on)
+            hovered = item;
+        else if (hovered === item)
+            hovered = null;
     }
     readonly property string unlit: rows.filter(r => !r[2]).map(r => r[1].toLowerCase()).join(" · ")
+
+    // The tooltip under a Titan, one look per form (the v3 mockup's Flame-Chase card):
+    // Phainon a cream pill with a gold edge and a small pointer, Khaslana a cut obsidian plate with a
+    // red offset, the Flame Reaver a torn shard with a violet left edge.
+    component Tip: ToolTip {
+        id: tip
+        readonly property var parts: root.hovered ? root.tip(root.hovered.modelData) : ["", ""]
+        parent: root.hovered ?? root
+        visible: root.hovered !== null
+        delay: 300
+        enter: null
+        exit: null
+        x: 0
+        y: parent ? parent.height + 8 : 0
+        leftPadding: 14
+        rightPadding: 14
+        topPadding: 6
+        bottomPadding: 6
+
+        contentItem: Row {
+            spacing: 0
+            Text {
+                anchors.baseline: how.baseline
+                text: Form.khaslana ? tip.parts[0].toUpperCase() : tip.parts[0]
+                font.family: Form.phainon ? "Marcellus" : (Form.khaslana ? "Cinzel" : "Chakra Petch")
+                font.pixelSize: Form.phainon ? 14 : (Form.khaslana ? 12 : 13)
+                font.weight: Form.phainon ? Font.Normal : Font.DemiBold
+                font.letterSpacing: Form.khaslana ? 1.9 : (Form.phainon ? 0.8 : 0)
+                color: Form.phainon ? "#334786" : (Form.khaslana ? "#F5D27A" : "#B9A8FF")
+            }
+            Text {
+                id: how
+                text: " · " + tip.parts[1]
+                font.family: Form.phainon ? "Marcellus" : "Chakra Petch"
+                font.pixelSize: Form.phainon ? 14 : 13
+                color: Form.phainon ? "#1E2752" : (Form.khaslana ? "#F3E6CC" : "#E9E7F2")
+                opacity: 0.8
+            }
+        }
+
+        background: Item {
+            implicitWidth: 40
+            implicitHeight: 28
+
+            // Phainon
+            RectangularShadow {
+                visible: Form.phainon
+                anchors.fill: parent
+                offset.y: 6
+                blur: 18
+                radius: height / 2
+                color: Qt.rgba(15 / 255, 22 / 255, 51 / 255, 0.25)
+            }
+            Rectangle {   // the pointer, half hidden under the pill
+                visible: Form.phainon
+                x: 22
+                y: -5
+                width: 10
+                height: 10
+                rotation: 45
+                color: "#FBF9F3"
+                border.width: 1
+                border.color: "#A87A22"
+            }
+            Rectangle {
+                visible: Form.phainon
+                anchors.fill: parent
+                radius: height / 2
+                color: "#FBF9F3"
+                border.width: 1
+                border.color: "#A87A22"
+            }
+
+            // Khaslana: the red offset, then the plate with its bottom-right corner cut
+            Shape {
+                id: plate
+                visible: !Form.phainon
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                readonly property real w: width
+                readonly property real h: height
+                readonly property var outline: Form.khaslana ? [Qt.point(0, 0), Qt.point(w, 0), Qt.point(w, h - 8), Qt.point(w - 8, h), Qt.point(0, h), Qt.point(0, 0)] : [Qt.point(0, 0), Qt.point(w, h * 0.08), Qt.point(w * 0.98, h), Qt.point(0, h * 0.92), Qt.point(0, 0)]
+
+                ShapePath {
+                    fillColor: Form.khaslana ? "#8E1424" : "transparent"
+                    strokeColor: "transparent"
+                    PathPolyline {
+                        path: Form.khaslana ? plate.outline.map(p => Qt.point(p.x + 4, p.y + 4)) : []
+                    }
+                }
+                ShapePath {
+                    fillColor: Form.khaslana ? "#0B080B" : "#0D0B14"
+                    strokeColor: Form.khaslana ? "#E0B04A" : "transparent"
+                    strokeWidth: 1
+                    joinStyle: ShapePath.MiterJoin
+                    PathPolyline {
+                        path: plate.outline
+                    }
+                }
+            }
+            Rectangle {   // the Flame Reaver's violet edge
+                visible: Form.reaver
+                width: 2
+                height: parent.height * 0.92
+                color: "#8F7BE0"
+            }
+        }
+    }
+
+    Tip {
+        id: shared
+    }
+    readonly property alias tipShown: shared.visible
+    readonly property alias tipParts: shared.parts
 
     implicitWidth: loader.item ? loader.item.implicitWidth : 0
     implicitHeight: loader.item ? loader.item.implicitHeight : 0
@@ -43,10 +167,8 @@ Item {
                     width: 50
                     spacing: 3
                     HoverHandler {
-                        id: medHover
+                        onHoveredChanged: root.hover(parent, hovered)
                     }
-                    ToolTip.visible: medHover.hovered
-                    ToolTip.text: root.tip(modelData)
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: root.glyphSize + 12
@@ -88,10 +210,8 @@ Item {
                     required property var modelData
                     spacing: 7
                     HoverHandler {
-                        id: blockHover
+                        onHoveredChanged: root.hover(parent, hovered)
                     }
-                    ToolTip.visible: blockHover.hovered
-                    ToolTip.text: root.tip(modelData)
                     Item {
                         width: root.glyphSize + 3
                         height: root.glyphSize + 3
@@ -150,10 +270,8 @@ Item {
                         strokeWidth: 1.5
                         color: modelData[2] ? "#B9A8FF" : "#4A4562"
                         HoverHandler {
-                            id: glyphHover
+                            onHoveredChanged: root.hover(parent, hovered)
                         }
-                        ToolTip.visible: glyphHover.hovered
-                        ToolTip.text: root.tip(modelData)
                     }
                 }
             }

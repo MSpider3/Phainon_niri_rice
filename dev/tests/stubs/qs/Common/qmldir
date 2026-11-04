@@ -1,2 +1,5 @@
 module qs.Common
 singleton Theme 1.0 Theme.qml
+singleton Form 1.0 Form.qml
+singleton Coreflames 1.0 Coreflames.qml
+singleton Motion 1.0 Motion.qml

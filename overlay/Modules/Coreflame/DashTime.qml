@@ -340,7 +340,6 @@ Column {
                 Repeater {
                     model: [
                         "Week " + time.isoWeek(time.now) + "  ·  Day " + time.dayOfYear(time.now) + " of " + time.daysInYear(time.now.getFullYear()),
-                        Form.dawnPeriod(time.now.getHours()),
                         (time.zoneName ? time.zoneName + "  ·  " : "") + time.utcText(time.localOffset)
                     ]
 
