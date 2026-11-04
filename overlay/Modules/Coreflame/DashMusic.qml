@@ -7,23 +7,28 @@ import qs.Services
 import qs.Widgets
 import qs.DCommon.Widgets
 
-// "Ocean · Now playing": cover, the two choosers (player and sound output), the full title, the
-// controls and the seek bar. The dashboard keeps the position ticking while it is open.
-Column {
-    id: music
+// "Ocean · Now playing" (v3 mockup): cover, the two choosers (player and sound output), the title,
+// the controls and the seek bar, in the form's frame. The dashboard keeps the position ticking.
+//   Phainon: a round paper cover, plain paper cards, a lapis play disc, a sun on the seek line.
+//   Khaslana: a gold-edged red cover block, cut plates, a solid gold play plate, his blade.
+//   Flame Reaver: a lined slab cover, slab chips, crossed blades, a hexagon plate, a scorched line.
+DashSheet {
+    id: view
 
+    readonly property CfInk ink: CfInk {}
     readonly property MprisPlayer player: MprisController.activePlayer
     readonly property bool playing: !!player && player.playbackState === MprisPlaybackState.Playing
     readonly property real length: player?.length > 0 ? player.length : MprisController.activePlayerStableLength
     readonly property real progress: length > 0 ? Math.max(0, Math.min(1, (player?.position ?? 0) / length)) : 0
-    readonly property real coverSize: 272
-    readonly property real side: width - coverSize - 12
     property bool sinksOpen: false
     readonly property var sinks: sinksOpen ? AudioService.getAvailableSinks() : []
+    readonly property string sinkName: AudioService.displayName(AudioService.sink) || "No output"
 
-    function tx(text) {
-        return Form.reaver ? String(text).toLowerCase() : text;
-    }
+    // Layout: the listening card, the song card (grows with a two-line title) and the transport
+    readonly property real listenH: ph ? 102 : (kh ? 80 : 104)
+    readonly property real songH: kh ? Math.max(115, songCol.implicitHeight + 37) : songCol.implicitHeight + 40
+    readonly property real topH: Math.max(220, listenH + 12 + songH)
+    readonly property real transportY: ph ? topH + 12 : (kh ? listenH + 10 + songH : 254)
 
     function seek(to) {
         if (player?.canSeek && length > 0)
@@ -36,80 +41,106 @@ Column {
         player.loopState = player.loopState === MprisLoopState.None ? MprisLoopState.Playlist : (player.loopState === MprisLoopState.Playlist ? MprisLoopState.Track : MprisLoopState.None);
     }
 
+    // The Reaver's clock reads 01:42
+    function time(seconds) {
+        const t = Chrono.format(Math.floor(seconds));
+        return rv && t.length < 5 ? "0" + t : t;
+    }
+
+    title: "Ocean · Now playing"
+    glyph: "ocean"
+    bodyHeight: ph ? transportY + 122 : (kh ? transportY + 116 : 404)
+    blocks: kh ? [[0, 0, spanW(1), listenH + 5 + songH, true], [colX(1), 0, spanW(3), listenH, false], [colX(1), listenH + 5, spanW(3), songH, true], [0, transportY, bodyWidth, 116, false]] : []
+
     // The device list is only read while it is open, as the stock media tab does.
     onSinksOpenChanged: sinksOpen ? AudioService.addRef() : AudioService.removeRef()
     Component.onDestruction: if (sinksOpen)
         AudioService.removeRef()
 
-    spacing: 12
+    // A choice: a paper pill in Phainon, a cut gold plate in Khaslana, a slab with a left edge in
+    // the Reaver.
+    component Chip: Item {
+        id: chip
 
-    // A small choice: player or output. Round paper in Phainon, a cut plate in Khaslana, a slab
-    // with a violet edge in the Reaver.
-    component Pick: Item {
-        id: pick
-
-        property string icon: ""
         property string text: ""
         property bool on: false
-        property real maxWidth: 220
+        property real maxWidth: 160
         signal clicked
 
-        implicitWidth: Math.min(maxWidth, pickRow.implicitWidth + 22)
-        implicitHeight: 30
+        implicitWidth: Math.min(maxWidth, chipText.implicitWidth + 28)
+        implicitHeight: view.ph ? 26 : 24
 
-        CfSurface {
+        Rectangle {
+            visible: view.ph
             anchors.fill: parent
-            color: pick.on ? (Form.reaver ? Theme.surfaceContainerHighest : Theme.primary) : (pickMouse.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh)
-            edgeColor: Form.reaver && pick.on ? Theme.live : Theme.withAlpha(Theme.outline, 0.5)
-            edgeWidth: Form.reaver ? (pick.on ? 1 : 0) : 1
-            lining: false
-            radius: 15
+            radius: height / 2
+            color: chip.on ? "#334786" : (chipMouse.containsMouse ? "#FFFDF7" : "#FBF9F3")
+            border.width: 1
+            border.color: chip.on ? "#334786" : "#C8B27E"
         }
 
-        Row {
-            id: pickRow
+        Shape {
+            visible: view.kh
+            anchors.fill: parent
+
+            ShapePath {
+                fillColor: chip.on ? "#E0B04A" : (chipMouse.containsMouse ? "#2A1015" : "transparent")
+                strokeColor: "#E0B04A"
+                strokeWidth: 1
+                joinStyle: ShapePath.MiterJoin
+                PathSvg {
+                    path: `M0.5 0.5 H${chip.width - 0.5} V${Math.round(chip.height * 0.68)} L${chip.width - 8} ${chip.height - 0.5} H0.5 Z`
+                }
+            }
+        }
+
+        Rectangle {
+            visible: view.rv
+            anchors.fill: parent
+            color: chipMouse.containsMouse ? "#1A1528" : "transparent"
+            border.width: 1
+            border.color: chip.on ? "#8F7BE0" : "#5C5478"
+
+            Rectangle {
+                width: 3
+                height: parent.height
+                color: parent.border.color
+            }
+        }
+
+        Text {
+            id: chipText
             anchors.centerIn: parent
-            width: Math.min(implicitWidth, pick.maxWidth - 22)
-            spacing: 6
-
-            DIcon {
-                visible: pick.icon !== "" && !Form.reaver
-                anchors.verticalCenter: parent.verticalCenter
-                name: pick.icon
-                size: 16
-                color: pick.on ? Theme.primaryText : Theme.primary
-            }
-
-            StyledText {
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, pick.maxWidth - 22 - (pick.icon !== "" && !Form.reaver ? 22 : 0))
-                wrapMode: Text.NoWrap
-                elide: Text.ElideRight
-                text: (Form.reaver && pick.on ? "> " : "") + music.tx(pick.text)
-                font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.Medium
-                color: pick.on ? (Form.reaver ? Theme.live : Theme.primaryText) : Theme.surfaceText
-            }
+            anchors.horizontalCenterOffset: view.rv ? 1 : 0
+            width: Math.min(implicitWidth, chip.maxWidth - 28)
+            elide: Text.ElideRight
+            text: view.rv ? (chip.on ? "> " : "") + chip.text.toLowerCase() : (view.kh ? chip.text.toUpperCase() : chip.text)
+            font.family: view.kh ? "Cinzel" : view.ink.font
+            font.pixelSize: view.kh ? 12 : (view.ph ? 13 : 14)
+            font.weight: view.kh ? Font.DemiBold : Font.Normal
+            font.letterSpacing: view.kh ? 1.7 : 0
+            color: view.ph ? (chip.on ? "#F7F3E8" : "#334786") : (view.kh ? (chip.on ? "#0B080B" : "#F5D27A") : (chip.on ? "#E9E7F2" : "#A8A4BC"))
         }
 
         MouseArea {
-            id: pickMouse
+            id: chipMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: pick.clicked()
+            onClicked: chip.clicked()
         }
     }
 
-    // One transport button. `kind` is shuffle, previous, play, next or repeat; it is dimmed and
-    // inert when the player doesn't offer it.
+    // One transport button. `kind` is shuffle, previous, play, next or repeat; it is faint and
+    // inert when the player doesn't offer it, half-faint when a toggle is off.
     component Control: Item {
         id: ctl
 
         required property string kind
-        readonly property MprisPlayer p: music.player
+        readonly property MprisPlayer p: view.player
         readonly property bool main: kind === "play"
+        readonly property bool toggle: kind === "shuffle" || kind === "repeat"
+        readonly property bool blade: view.rv && (kind === "previous" || kind === "next")
         readonly property bool able: {
             switch (kind) {
             case "shuffle":
@@ -125,7 +156,7 @@ Column {
             }
             return false;
         }
-        readonly property bool on: kind === "shuffle" ? !!p?.shuffle : (kind === "repeat" ? !!p && p.loopState !== MprisLoopState.None : false)
+        readonly property bool on: kind === "shuffle" ? !!p?.shuffle : (kind === "repeat" ? !!p && p.loopState !== MprisLoopState.None : true)
         readonly property string icon: {
             switch (kind) {
             case "shuffle":
@@ -133,87 +164,95 @@ Column {
             case "previous":
                 return "skip_previous";
             case "play":
-                return music.playing ? "pause" : "play_arrow";
+                return view.playing ? "pause" : "play_arrow";
             case "next":
                 return "skip_next";
             }
             return p?.loopState === MprisLoopState.Track ? "repeat_one" : "repeat";
         }
-        readonly property color ink: !able ? Theme.withAlpha(Theme.surfaceText, 0.3) : (on ? (Form.reaver ? Theme.live : Theme.primary) : Theme.surfaceText)
+        readonly property color tone: view.ph ? (main ? "#F7F3E8" : "#334786") : (view.kh ? (main ? "#0B080B" : "#E0B04A") : "#B9A8FF")
+        readonly property bool hot: ctlMouse.containsMouse && able
 
-        implicitWidth: Form.phainon ? (main ? 64 : 42) : (Form.khaslana ? (main ? 112 : 50) : (main ? 50 : 38))
-        implicitHeight: Form.phainon ? (main ? 64 : 42) : (Form.khaslana ? 42 : 50)
-        opacity: able ? 1 : 0.55
+        implicitWidth: view.ph ? (main ? 52 : 34) : (view.kh ? (main ? 60 : 46) : (main ? 54 : 34))
+        implicitHeight: view.ph ? (main ? 52 : 34) : (view.kh ? (main ? 46 : 38) : (main ? 44 : 34))
+        opacity: !able ? 0.2 : (toggle && !on ? 0.35 : 1)
 
-        // Phainon: round paper; the play button a full lapis disc
+        // Phainon: the play button is a full lapis disc
         Rectangle {
-            visible: Form.phainon || !Form.active
+            visible: view.ph && ctl.main
             anchors.fill: parent
             radius: width / 2
-            color: ctl.main ? Theme.primary : (ctlMouse.containsMouse && ctl.able ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh)
-            border.width: ctl.main ? 0 : 1
-            border.color: ctl.on ? Theme.primary : Theme.withAlpha(Theme.outline, 0.45)
+            color: ctl.hot ? "#3D5396" : "#334786"
         }
 
-        // Khaslana: a cut plate edged in gold; the play plate is solid gold
-        CfSurface {
-            visible: Form.khaslana
-            anchors.fill: parent
-            color: ctl.main || ctl.on ? Theme.primary : (ctlMouse.containsMouse && ctl.able ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh)
-            edgeColor: ctl.able ? Theme.primary : Theme.withAlpha(Theme.outline, 0.6)
-            edgeWidth: 1
-        }
+        // Khaslana: cut plates edged in gold; the play plate solid gold over a red offset
+        Repeater {
+            model: view.kh ? (ctl.main ? [["#8E1424", 4, 3], ["#E0B04A", 0, 0]] : [[ctl.hot ? "#2A1015" : "transparent", 0, 0]]) : []
 
-        // Reaver: play is a small plate in the shape of his mask, edged in violet
-        Shape {
-            visible: Form.reaver && ctl.main
-            anchors.centerIn: parent
-            width: 24
-            height: 24
-            scale: ctl.width / 26
-            preferredRendererType: Shape.CurveRenderer
+            Shape {
+                required property var modelData
+                x: modelData[1]
+                y: modelData[2]
+                width: ctl.width
+                height: ctl.height
 
-            ShapePath {
-                fillColor: ctlMouse.containsMouse && ctl.able ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
-                strokeColor: Theme.live
-                strokeWidth: 1.2
-                joinStyle: ShapePath.MiterJoin
-
-                PathSvg {
-                    path: "M4.5 2.5 H19.5 V11 Q19.5 18 12 21.5 Q4.5 18 4.5 11 Z"
+                ShapePath {
+                    fillColor: modelData[0]
+                    strokeColor: ctl.main ? "transparent" : "#E0B04A"
+                    strokeWidth: 1
+                    joinStyle: ShapePath.MiterJoin
+                    PathSvg {
+                        path: `M0.5 0.5 H${ctl.width - 0.5} V${Math.round(ctl.height * 0.72)} L${ctl.width - 10} ${ctl.height - 0.5} H0.5 Z`
+                    }
                 }
             }
         }
 
-        // Reaver: previous and next are two crossed blades with the hilts towards the direction
+        // Reaver: play sits in a hexagon plate shaped like his mask, edged in violet
         Shape {
-            visible: Form.reaver && (ctl.kind === "previous" || ctl.kind === "next")
+            visible: view.rv && ctl.main
+            anchors.fill: parent
+
+            ShapePath {
+                fillColor: ctl.hot ? "#241D38" : "#1A1528"
+                strokeColor: "#8F7BE0"
+                strokeWidth: 1
+                joinStyle: ShapePath.MiterJoin
+                PathPolyline {
+                    path: {
+                        const w = ctl.width - 1, h = ctl.height - 1;
+                        return [Qt.point(0.5 + 0.1 * w, 0.5), Qt.point(0.5 + 0.9 * w, 0.5), Qt.point(0.5 + w, 0.5 + 0.4 * h), Qt.point(0.5 + 0.7 * w, 0.5 + h), Qt.point(0.5 + 0.3 * w, 0.5 + h), Qt.point(0.5, 0.5 + 0.4 * h), Qt.point(0.5 + 0.1 * w, 0.5)];
+                    }
+                }
+            }
+        }
+
+        // Reaver: previous and next are crossed blades; the short bars are the guards, on the
+        // side it skips to.
+        Shape {
+            visible: ctl.blade
             anchors.centerIn: parent
             width: 24
             height: 24
-            scale: 1.15
             preferredRendererType: Shape.CurveRenderer
 
             ShapePath {
                 fillColor: "transparent"
-                strokeColor: ctl.ink
+                strokeColor: ctl.tone
                 strokeWidth: 1.5
                 capStyle: ShapePath.FlatCap
-
                 PathSvg {
-                    // Two blades crossing; the short bars are the guards, on the side it skips to.
                     path: ctl.kind === "next" ? "M5 5 L19 19 M5 19 L19 5 M15.5 21 L21 15.5 M15.5 3 L21 8.5 M22 9 V15" : "M19 5 L5 19 M19 19 L5 5 M8.5 21 L3 15.5 M8.5 3 L3 8.5 M2 9 V15"
                 }
             }
         }
 
         DIcon {
-            visible: !(Form.reaver && (ctl.kind === "previous" || ctl.kind === "next"))
+            visible: !ctl.blade
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: Form.reaver && ctl.main ? -3 : 0
             name: ctl.icon
-            size: ctl.main ? (Form.reaver ? 18 : 30) : (Form.reaver ? 18 : 22)
-            color: ctl.main && !Form.reaver ? Theme.primaryText : (Form.khaslana && ctl.on ? Theme.primaryText : ctl.ink)
+            size: view.ph && ctl.main ? 26 : 22
+            color: ctl.tone
         }
 
         CfEmber {
@@ -229,7 +268,7 @@ Column {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                if (Form.reaver)
+                if (view.rv)
                     ctlEmber.flare();
                 switch (ctl.kind) {
                 case "shuffle":
@@ -245,168 +284,276 @@ Column {
                     MprisController.next();
                     break;
                 case "repeat":
-                    music.cycleLoop();
+                    view.cycleLoop();
                     break;
                 }
             }
         }
     }
 
-    Row {
-        spacing: 12
+    // ── the cover: a paper disc, the red block inside a gold line, a lined slab ──
+    Item {
+        id: cover
+        readonly property string art: view.player?.trackArtUrl ?? ""
+        width: view.ph ? 220 : (view.kh ? view.spanW(1) : 236)
+        height: view.ph ? 220 : (view.kh ? view.listenH + 5 + view.songH : 236)
 
-        // Cover: round paper in Phainon, a gold-edged plate in Khaslana, a lined slab in the Reaver
-        ClippingRectangle {
-            id: cover
-            readonly property string art: music.player?.trackArtUrl ?? ""
-            width: music.coverSize
-            height: music.coverSize
-            radius: Form.phainon || !Form.active ? 22 : (Form.khaslana ? 2 : 0)
-            color: Theme.surfaceContainerHigh
+        Shape {
+            visible: view.ph
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
 
-            Image {
-                id: coverImage
+            ShapePath {
+                strokeColor: "#C8B27E"
+                strokeWidth: 1
+                fillGradient: RadialGradient {
+                    centerX: 110
+                    centerY: 84
+                    centerRadius: 175
+                    focalX: 110
+                    focalY: 84
+                    GradientStop {
+                        position: 0
+                        color: "#FBF9F3"
+                    }
+                    GradientStop {
+                        position: 0.58
+                        color: "#E7DFC8"
+                    }
+                    GradientStop {
+                        position: 1
+                        color: "#C8B27E"
+                    }
+                }
+                PathAngleArc {
+                    centerX: 110
+                    centerY: 110
+                    radiusX: 109.5
+                    radiusY: 109.5
+                    sweepAngle: 360
+                }
+            }
+        }
+
+        DashCard {
+            visible: view.rv
+            anchors.fill: parent
+            poly: [[0, 0], [1, 0.03], [0.97, 1], [0.02, 0.94]]
+        }
+
+        // The slab's lines and the art keep inside the shard's slant
+        Item {
+            id: face
+            x: view.rv ? 8 : 0
+            y: view.rv ? 9 : 0
+            width: parent.width - (view.rv ? 17 : 0)
+            height: parent.height - (view.rv ? 25 : 0)
+
+            Repeater {
+                model: view.rv ? Math.floor(face.height / 7) : 0
+
+                Rectangle {
+                    required property int index
+                    y: index * 7 + 6
+                    width: face.width
+                    height: 1
+                    color: "#16121F"
+                }
+            }
+
+            ClippingRectangle {
                 anchors.fill: parent
-                source: cover.art
-                sourceSize: Qt.size(cover.width * 2, cover.height * 2)
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                visible: status === Image.Ready
+                radius: view.ph ? width / 2 : 0
+                color: "transparent"
+                visible: coverImage.status === Image.Ready
+
+                Image {
+                    id: coverImage
+                    anchors.fill: parent
+                    source: cover.art
+                    sourceSize: Qt.size(cover.width * 2, cover.height * 2)
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
             }
 
             CfGlyph {
                 visible: coverImage.status !== Image.Ready
                 anchors.centerIn: parent
-                name: Form.reaver ? "mask" : "ocean"
-                size: 96
-                strokeWidth: 1.2
-                color: Theme.withAlpha(Form.reaver ? Theme.live : Theme.primary, 0.6)
-            }
-
-            Rectangle {
-                visible: Form.khaslana || Form.reaver
-                anchors.fill: parent
-                anchors.margins: Form.reaver ? 2 : 0
-                color: "transparent"
-                border.width: 1
-                border.color: Form.reaver ? Theme.withAlpha(Theme.live, 0.8) : Theme.primary
+                name: "ocean"
+                size: view.ph ? 96 : 90
+                strokeWidth: view.ph ? 1 : 1.2
+                color: view.ph ? "#334786" : (view.kh ? "#E0B04A" : "#B9A8FF")
             }
         }
 
-        Column {
-            width: music.side
-            spacing: 12
+        Rectangle {
+            visible: view.kh
+            anchors.fill: parent
+            anchors.margins: 8
+            color: "transparent"
+            border.width: 1
+            border.color: "#E0B04A"
+        }
+    }
 
-            // The two choosers: which player is heard, and through what
-            Item {
-                width: parent.width
-                height: 30
+    // ── which player is heard, and through what ──
+    DashCard {
+        id: listen
+        x: view.ph ? 234 : (view.kh ? view.colX(1) : 250)
+        width: view.ph ? 514 : (view.kh ? view.spanW(3) : 530)
+        height: view.listenH
+        z: view.sinksOpen ? 3 : 0
+        bare: view.kh
+        flute: false
+        poly: [[0.04, 0], [1, 0], [0.96, 1], [0, 0.88]]
+        label: "Listening from"
 
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
+        Row {
+            id: chips
+            readonly property int count: MprisController.availablePlayers.length
+            readonly property real room: parent.width - (view.ph ? 0 : outRow.width + 16)
+            spacing: 8
 
-                    StyledText {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: music.tx("Listening from")
-                        font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.withAlpha(Theme.surfaceText, 0.6)
-                    }
+            Repeater {
+                model: MprisController.availablePlayers
 
-                    Repeater {
-                        model: MprisController.availablePlayers
-
-                        Pick {
-                            required property var modelData
-                            anchors.verticalCenter: parent.verticalCenter
-                            maxWidth: MprisController.availablePlayers.length > 1 ? 96 : 150
-                            text: modelData.identity || "Player"
-                            on: modelData === music.player
-                            onClicked: MprisController.setActivePlayer(modelData)
-                        }
-                    }
-
-                    StyledText {
-                        visible: MprisController.availablePlayers.length === 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Form.reaver ? "nothing." : "—"
-                        font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.withAlpha(Theme.surfaceText, 0.45)
-                    }
-                }
-
-                Pick {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    maxWidth: 170
-                    icon: AudioService.sinkIcon(AudioService.sink)
-                    text: AudioService.displayName(AudioService.sink) || "No output"
-                    on: music.sinksOpen
-                    onClicked: music.sinksOpen = !music.sinksOpen
+                Chip {
+                    required property var modelData
+                    maxWidth: Math.min(160, chips.room / Math.max(1, chips.count) - 8)
+                    text: modelData.identity || "Player"
+                    on: modelData === view.player
+                    onClicked: MprisController.setActivePlayer(modelData)
                 }
             }
 
-            // Sound outputs, opened from the chooser above
+            Text {
+                visible: chips.count === 0
+                height: 24
+                verticalAlignment: Text.AlignVCenter
+                text: view.rv ? "nothing." : "—"
+                font.family: view.ink.font
+                font.pixelSize: 13
+                color: view.ink.muted
+            }
+        }
+
+        // Phainon: its own line, "Sound output" and a chip
+        Text {
+            visible: view.ph
+            y: 36
+            height: 26
+            verticalAlignment: Text.AlignVCenter
+            text: "Sound output"
+            font.family: view.ink.font
+            font.pixelSize: 13
+            color: view.ink.muted
+        }
+
+        Chip {
+            visible: view.ph
+            anchors.right: parent.right
+            y: 36
+            maxWidth: 260
+            text: view.sinkName + " ▾"
+            on: view.sinksOpen
+            onClicked: view.sinksOpen = !view.sinksOpen
+        }
+
+        // Khaslana and the Reaver: "output · Speakers" at the end of the chips' line
+        Row {
+            id: outRow
+            visible: !view.ph
+            anchors.right: parent.right
+            height: 24
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "output · "
+                font.family: view.ink.font
+                font.pixelSize: 13
+                color: view.ink.muted
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, 200)
+                elide: Text.ElideRight
+                text: view.kh ? view.sinkName + " ▾" : view.sinkName.toLowerCase()
+                font.family: view.ink.font
+                font.pixelSize: 13
+                color: view.kh ? "#F5D27A" : (view.sinksOpen || outMouse.containsMouse ? "#E9E7F2" : view.ink.muted)
+            }
+        }
+
+        MouseArea {
+            id: outMouse
+            visible: !view.ph
+            anchors.fill: outRow
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: view.sinksOpen = !view.sinksOpen
+        }
+
+        // The sound outputs, dropped over the cards below
+        Item {
+            visible: view.sinksOpen
+            anchors.right: parent.right
+            y: view.ph ? 66 : 28
+            width: 300
+            height: sinkList.implicitHeight + 8
+
+            Rectangle {
+                anchors.fill: parent
+                radius: view.ph ? 12 : 0
+                color: view.ph ? "#FBF9F3" : (view.kh ? "#0B080B" : "#0D0B14")
+                border.width: 1
+                border.color: view.ph ? "#C8B27E" : (view.kh ? "#E0B04A" : "#5C5478")
+
+                Rectangle {
+                    visible: view.rv
+                    width: 3
+                    height: parent.height
+                    color: "#8F7BE0"
+                }
+            }
+
             Column {
-                visible: music.sinksOpen
+                id: sinkList
+                y: 4
                 width: parent.width
-                spacing: 4
 
                 Repeater {
-                    model: music.sinks
+                    model: view.sinks
 
                     Item {
                         id: sinkRow
                         required property var modelData
                         readonly property bool current: modelData === AudioService.sink
-                        width: parent.width
-                        height: 32
+                        width: sinkList.width
+                        height: 30
 
-                        CfSurface {
+                        Rectangle {
+                            visible: sinkMouse.containsMouse
                             anchors.fill: parent
-                            color: sinkMouse.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
-                            edgeColor: sinkRow.current ? (Form.reaver ? Theme.live : Theme.primary) : Theme.withAlpha(Theme.outline, 0.4)
-                            edgeWidth: Form.reaver && !sinkRow.current ? 0 : 1
-                            lining: false
-                            radius: 16
+                            anchors.leftMargin: 4
+                            anchors.rightMargin: 4
+                            radius: view.ph ? 8 : 0
+                            color: view.ph ? "#EFE6CC" : (view.kh ? "#2A1015" : "#1A1528")
                         }
 
-                        Row {
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: 12
-                            spacing: 8
-
-                            CfCrossToggle {
-                                visible: Form.reaver
-                                anchors.verticalCenter: parent.verticalCenter
-                                checked: sinkRow.current
-                                color: Theme.live
-                                enabled: false
-                                opacity: 1
-                            }
-
-                            DIcon {
-                                visible: !Form.reaver
-                                anchors.verticalCenter: parent.verticalCenter
-                                name: AudioService.sinkIcon(sinkRow.modelData)
-                                size: 16
-                                color: sinkRow.current ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.6)
-                            }
-
-                            StyledText {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: sinkRow.width - 60
-                                wrapMode: Text.NoWrap
-                                // Outputs of one card differ only at the end ("… (HDMI 2)")
-                                elide: Text.ElideMiddle
-                                text: music.tx(AudioService.displayName(sinkRow.modelData))
-                                font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
-                                font.pixelSize: Theme.fontSizeSmall
-                                font.weight: sinkRow.current ? Font.DemiBold : Font.Normal
-                                color: Theme.surfaceText
-                            }
+                        Text {
+                            x: 14
+                            width: parent.width - 28
+                            height: parent.height
+                            verticalAlignment: Text.AlignVCenter
+                            // Outputs of one card differ only at the end ("… (HDMI 2)")
+                            elide: Text.ElideMiddle
+                            text: (view.rv && sinkRow.current ? "> " : "") + view.ink.tx(AudioService.displayName(sinkRow.modelData))
+                            font.family: view.ink.font
+                            font.pixelSize: 13
+                            font.weight: sinkRow.current ? Font.DemiBold : Font.Normal
+                            color: sinkRow.current ? view.ink.accent : view.ink.text
                         }
 
                         MouseArea {
@@ -416,165 +563,239 @@ Column {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 AudioService.setSink(sinkRow.modelData);
-                                music.sinksOpen = false;
+                                view.sinksOpen = false;
                             }
                         }
                     }
                 }
             }
+        }
+    }
 
-            // The full title, wrapped onto as many lines as it needs
-            DashCard {
+    // ── the song ──
+    DashCard {
+        x: listen.x
+        y: view.ph ? view.listenH + 12 : (view.kh ? view.listenH + 5 : 116)
+        width: listen.width
+        height: view.rv ? 130 : view.songH
+        bare: view.kh
+        flute: false
+        poly: [[0, 0.06], [1, 0], [0.98, 1], [0.03, 0.95]]
+        label: "I · Song"
+
+        Column {
+            id: songCol
+            width: parent.width
+            spacing: 4
+
+            Item {
                 width: parent.width
-                height: titleColumn.implicitHeight + 38
-                numeral: "I"
-                glyph: "ocean"
-                label: "Song"
+                height: songTitle.height
 
-                Column {
-                    id: titleColumn
-                    width: parent.width
-                    spacing: 4
+                // The Reaver's title splits like a cracked screen: violet and teal copies behind
+                Repeater {
+                    model: view.rv ? [["#D98F7BE0", 2], ["#8C4FD1C5", -2]] : []
 
-                    StyledText {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Form.phainon ? Text.AlignHCenter : Text.AlignLeft
-                        text: music.player?.trackTitle || (Form.reaver ? "nothing." : "Nothing playing")
-                        font.family: Form.reaver ? Theme.monoFontFamily : Form.display(Theme.fontFamily)
-                        font.pixelSize: Form.reaver ? 20 : 24
-                        font.weight: Font.DemiBold
-                        color: Theme.surfaceText
+                    Text {
+                        required property var modelData
+                        x: modelData[1]
+                        width: songTitle.width
+                        elide: Text.ElideRight
+                        text: songTitle.text
+                        font: songTitle.font
+                        color: modelData[0]
                     }
+                }
 
-                    StyledText {
-                        visible: text !== ""
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Form.phainon ? Text.AlignHCenter : Text.AlignLeft
-                        text: [music.player?.trackArtist, music.player?.trackAlbum].filter(t => !!t).join(" · ")
-                        font.family: Form.reaver ? Theme.monoFontFamily : Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeMedium
-                        color: Form.reaver ? Theme.withAlpha(Theme.live, 0.9) : Theme.withAlpha(Theme.surfaceText, 0.7)
+                Text {
+                    id: songTitle
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: view.rv ? 1 : 2
+                    elide: Text.ElideRight
+                    text: view.player?.trackTitle ? (view.kh ? view.player.trackTitle.toUpperCase() : view.ink.tx(view.player.trackTitle)) : (view.rv ? "nothing." : "Nothing playing")
+                    font.family: view.ph ? "Marcellus" : (view.kh ? "Cinzel" : "Chakra Petch")
+                    font.pixelSize: 26
+                    font.weight: view.ph ? Font.Normal : (view.kh ? Font.Bold : Font.DemiBold)
+                    font.letterSpacing: view.kh ? 2.6 : 0
+                    color: view.ph ? view.ink.text : (view.kh ? "#F5D27A" : "#E9E7F2")
+                }
+            }
+
+            Text {
+                visible: text !== ""
+                width: parent.width
+                elide: Text.ElideRight
+                text: view.ink.tx([view.player?.trackArtist, view.player?.trackAlbum].filter(t => !!t).join(" · "))
+                font.family: view.ink.font
+                font.pixelSize: 14
+                color: view.ink.muted
+            }
+        }
+    }
+
+    // ── the controls and the seek bar ──
+    DashCard {
+        y: view.transportY
+        width: view.bodyWidth
+        height: view.ph ? 122 : (view.kh ? 116 : 150)
+        bare: view.kh
+        flute: false
+        poly: [[0.02, 0.04], [1, 0], [0.97, 0.96], [0, 1]]
+
+        Column {
+            width: parent.width
+            topPadding: view.rv ? 22 : 12
+            spacing: 14
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: view.kh ? 24 : 12
+
+                Repeater {
+                    model: ["shuffle", "previous", "play", "next", "repeat"]
+
+                    Control {
+                        required property string modelData
+                        anchors.verticalCenter: parent.verticalCenter
+                        kind: modelData
                     }
                 }
             }
 
-            // Controls and the seek bar
-            DashCard {
+            Item {
                 width: parent.width
-                height: controls.implicitHeight + 28
+                height: 18
 
-                Column {
-                    id: controls
-                    width: parent.width
-                    spacing: 14
+                Text {
+                    width: 48
+                    height: parent.height
+                    verticalAlignment: Text.AlignVCenter
+                    text: view.time(view.player?.position ?? 0)
+                    font.family: Form.numerals
+                    font.pixelSize: 13
+                    color: view.ph ? view.ink.muted : (view.kh ? "#F5D27A" : "#CFC6A8")
+                }
 
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: Form.phainon ? 14 : (Form.khaslana ? 8 : 16)
+                Text {
+                    anchors.right: parent.right
+                    width: 48
+                    height: parent.height
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignRight
+                    text: view.time(view.length)
+                    font.family: Form.numerals
+                    font.pixelSize: 13
+                    color: view.ink.muted
+                }
 
-                        Repeater {
-                            model: ["shuffle", "previous", "play", "next", "repeat"]
+                Item {
+                    id: track
+                    readonly property real at: Math.round(width * view.progress)
+                    x: 60
+                    width: parent.width - 120
+                    height: parent.height
 
-                            Control {
-                                required property string modelData
-                                anchors.verticalCenter: parent.verticalCenter
-                                kind: modelData
+                    // The line not yet played
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width
+                        height: view.ph ? 3 : 2
+                        radius: view.ph ? 1.5 : 0
+                        color: view.ph ? "#E4DAC0" : (view.kh ? "#3A1A1E" : "#2C2840")
+                    }
+
+                    // Played: lapis in Phainon, his golden blade in Khaslana
+                    Rectangle {
+                        visible: !view.rv
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: track.at
+                        height: view.ph ? 3 : 4
+                        radius: view.ph ? 1.5 : 0
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop {
+                                position: 0
+                                color: view.ph ? "#334786" : "#9C6A18"
+                            }
+                            GradientStop {
+                                position: 1
+                                color: view.ph ? "#334786" : "#F2C75C"
                             }
                         }
                     }
 
+                    // Played, in the Reaver: a dashed scorch
                     Item {
-                        width: parent.width
-                        height: 18
+                        visible: view.rv
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: track.at
+                        height: 2
+                        clip: true
 
-                        // Phainon: a thin lapis line with a small sun as its handle
-                        Item {
-                            id: sunSeek
-                            visible: Form.phainon || !Form.active
-                            anchors.fill: parent
+                        Row {
+                            spacing: 3
 
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                x: 7
-                                width: parent.width - 14
-                                height: 2
-                                radius: 1
-                                color: Theme.withAlpha(Theme.primary, 0.2)
+                            Repeater {
+                                model: view.rv ? Math.ceil(track.width / 12) : 0
 
                                 Rectangle {
-                                    width: parent.width * music.progress
-                                    height: parent.height
-                                    radius: 1
-                                    color: Theme.primary
+                                    width: 9
+                                    height: 2
+                                    color: "#5C5478"
                                 }
                             }
-
-                            Rectangle {
-                                x: 7 + (parent.width - 14) * music.progress - width / 2
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 14
-                                height: 14
-                                radius: 7
-                                color: "#E9B92E"
-                                border.width: 3
-                                border.color: Theme.withAlpha("#E9B92E", 0.3)
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: music.player?.canSeek ?? false
-                                cursorShape: Qt.PointingHandCursor
-                                function report(mouse) {
-                                    music.seek(Math.max(0, Math.min(1, (mouse.x - 7) / (width - 14))));
-                                }
-                                onPressed: mouse => report(mouse)
-                                onPositionChanged: mouse => {
-                                    if (pressed)
-                                        report(mouse);
-                                }
-                            }
-                        }
-
-                        // Khaslana: his blade
-                        CfBlade {
-                            visible: Form.khaslana
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width
-                            interactive: music.player?.canSeek ?? false
-                            value: music.progress
-                            onMoved: to => music.seek(to)
-                        }
-
-                        // Reaver: a scorched line with one ember for its head
-                        CfScorch {
-                            visible: Form.reaver
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width
-                            interactive: music.player?.canSeek ?? false
-                            value: music.progress
-                            onMoved: to => music.seek(to)
                         }
                     }
 
+                    // The head: a small sun, a diamond point with a red offset, one ember
                     Item {
-                        width: parent.width
-                        height: 16
+                        x: track.at - width / 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 22
+                        height: 22
 
-                        StyledText {
-                            text: Chrono.format(Math.floor(music.player?.position ?? 0))
-                            font.family: Form.phainon ? Theme.fontFamily : Theme.monoFontFamily
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.withAlpha(Theme.surfaceText, 0.6)
+                        Repeater {
+                            model: view.ph ? [[22, "#4DF1DA4F", "transparent"], [14, "#F1DA4F", "#A87A22"]] : (view.rv ? [[22, "#26F07A85", "transparent"], [14, "#59F07A85", "transparent"], [8, "#F07A85", "transparent"]] : [])
+
+                            Rectangle {
+                                required property var modelData
+                                anchors.centerIn: parent
+                                width: modelData[0]
+                                height: width
+                                radius: width / 2
+                                color: modelData[1]
+                                border.width: modelData[2] === "transparent" ? 0 : 1
+                                border.color: modelData[2]
+                            }
                         }
 
-                        StyledText {
-                            anchors.right: parent.right
-                            text: Chrono.format(Math.floor(music.length))
-                            font.family: Form.phainon ? Theme.fontFamily : Theme.monoFontFamily
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.withAlpha(Theme.surfaceText, 0.6)
+                        Repeater {
+                            model: view.kh ? [["#8E1424", 3], ["#F5D27A", 0]] : []
+
+                            Rectangle {
+                                required property var modelData
+                                anchors.centerIn: parent
+                                anchors.horizontalCenterOffset: modelData[1]
+                                width: 12
+                                height: 12
+                                rotation: 45
+                                color: modelData[0]
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: view.player?.canSeek ?? false
+                        cursorShape: Qt.PointingHandCursor
+                        function report(mouse) {
+                            view.seek(Math.max(0, Math.min(1, mouse.x / width)));
+                        }
+                        onPressed: mouse => report(mouse)
+                        onPositionChanged: mouse => {
+                            if (pressed)
+                                report(mouse);
                         }
                     }
                 }

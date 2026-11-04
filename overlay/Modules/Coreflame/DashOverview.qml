@@ -6,6 +6,7 @@ import qs.Services
 import qs.Widgets
 import qs.DCommon.Widgets
 import "../../Common/Format.js" as Format
+import "Threads.js" as Threads
 
 // The dashboard's summary page: the same ten cards in every form, laid out as Khaslana's obsidian
 // mosaic held together with golden blood, the Flame Reaver's shattered pane, or Phainon's temple
@@ -91,7 +92,8 @@ Item {
     readonly property color gilt: light ? "#A87A22" : Theme.secondary
     readonly property color capInk: light ? "#8A6418" : Theme.primary
 
-    readonly property var notes: NotificationService.groupedNotifications.slice(0, 3)
+    // live and saved notifications, so the card is not empty once apps close theirs
+    readonly property var notes: Threads.merge(NotificationService.groupedNotifications, NotificationService.historyList).slice(0, 3)
     readonly property MprisPlayer player: MprisController.activePlayer
     readonly property int hour: now.getHours()
     readonly property string time: now.toLocaleTimeString(I18n.locale(), SettingsData.use24HourClock ? "HH:mm" : "h:mm AP").replace(/\s*[AaPp]\.?[Mm]\.?$/, "")
@@ -807,7 +809,10 @@ Item {
                 anchors.fill: parent
                 anchors.margins: -4
                 cursorShape: Qt.PointingHandCursor
-                onClicked: NotificationService.clearAllNotifications()
+                onClicked: {
+                    NotificationService.clearAllNotifications();
+                    NotificationService.clearHistory();
+                }
             }
         }
 
@@ -874,14 +879,14 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         x: Form.phainon ? 36 : 27
                         width: parent.width - x - noteAge.width - 8
-                        text: ov.tx((note.modelData.appName || "") + " · " + (note.modelData.latestNotification?.summary ?? "").replace(/\s+/g, " "))
+                        text: ov.tx((note.modelData.appName || "") + " · " + (note.modelData.notes[0].summary ?? "").replace(/\s+/g, " "))
                     }
 
                     Label {
                         id: noteAge
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: note.modelData.latestNotification?.timeStr ?? ""
+                        text: Threads.age(note.modelData.notes[0].time, ov.now.getTime())
                         font.pixelSize: 12
                         color: ov.mut
                     }

@@ -1,16 +1,12 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Effects
-import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Widgets
 import Quickshell.Services.Mpris
 import qs.Common
 import qs.Services
 import qs.Widgets
 import qs.DCommon.Widgets
-import Qt.labs.folderlistmodel
 import "../../Common/Format.js" as Format
 
 // The dashboard the island grows into. One summary page; a card opens in place into its full view.
@@ -165,81 +161,12 @@ PanelWindow {
             }
         }
 
-        // A full view hangs from the island as one tab. The overview has no header of its own: the
-        // island stays in sight above it and the form's layout below draws its own frame.
-        CfTab {
-            visible: dash.view !== ""
-            anchors.fill: parent
-            side: "center"
-        }
-
-        CfOrnament {
-            id: ornament
-            visible: dash.view !== ""
-            anchors.fill: parent
-        }
-
-        Connections {
-            target: dash
-
-            function onShownChanged() {
-                if (dash.shown)
-                    ornament.play();
-            }
-        }
+        // No frame of its own: the island stays in sight above, and the overview and every full view
+        // (DashSheet) draw the form's frame themselves.
 
         // Swallow clicks so they don't close the dashboard
         MouseArea {
             anchors.fill: parent
-        }
-
-        // Header of a full view: back, and the view's name
-        Row {
-            id: header
-            visible: dash.view !== ""
-            anchors.horizontalCenter: parent.horizontalCenter
-            height: dash.strip
-            spacing: 10
-
-            DIcon {
-                anchors.verticalCenter: parent.verticalCenter
-                name: "arrow_back"
-                size: 20
-                color: Theme.primary
-
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: dash.view = ""
-                }
-            }
-
-            CfSigil {
-                anchors.verticalCenter: parent.verticalCenter
-                size: 20
-                lit: ((clock.date?.getHours() ?? 0) % 12) || 12
-            }
-
-            StyledText {
-                anchors.verticalCenter: parent.verticalCenter
-                text: {
-                    const names = {
-                        "music": "Ocean · Now playing",
-                        "weather": "Sky · Weather",
-                        "wallpaper": "Worldbearing · Wallpapers",
-                        "time": "Time · Clock",
-                        "notifications": "Romance · Messages",
-                        "wellbeing": "Time · Wellbeing",
-                        "network": "Passage · Network"
-                    };
-                    return dash.tx(names[dash.view] ?? "");
-                }
-                font.family: Form.display(Theme.fontFamily)
-                font.pixelSize: Theme.fontSizeLarge
-                font.weight: Font.DemiBold
-                color: Theme.surfaceText
-            }
         }
 
         Loader {
@@ -252,17 +179,15 @@ PanelWindow {
                     "notifications": "DashNotifications.qml",
                     "wellbeing": "DashWellbeing.qml",
                     "network": "DashNetwork.qml",
-                    "time": "DashTime.qml"
-                })
-            readonly property var components: ({
-                    "wallpaper": wallpaperView
+                    "time": "DashTime.qml",
+                    "wallpaper": "DashWallpapers.qml"
                 })
 
-            x: 18
+            x: dash.view === "" ? 18 : 0
             y: dash.strip + 8
-            width: dash.panelWidth - 36
+            width: dash.view === "" ? dash.panelWidth - 36 : dash.panelWidth
             opacity: dash.reveal
-            sourceComponent: body.files[dash.view] ? fileView : (body.components[dash.view] ?? overviewView)
+            sourceComponent: body.files[dash.view] ? fileView : overviewView
         }
     }
 
@@ -280,211 +205,16 @@ PanelWindow {
         id: fileView
 
         Loader {
+            id: fileLoader
             source: Qt.resolvedUrl(body.files[dash.view] ?? "")
-        }
-    }
 
-    // ── wallpapers ──
-    Component {
-        id: wallpaperView
+            // The sheet's ‹ goes back to the overview
+            Connections {
+                target: fileLoader.item
+                ignoreUnknownSignals: true
 
-        Column {
-            id: walls
-            spacing: dash.gap
-
-            readonly property string current: SessionData.wallpaperPath
-            readonly property string folder: current.substring(0, current.lastIndexOf("/"))
-            readonly property int perPage: 12
-            readonly property int pages: Math.max(1, Math.ceil(files.count / perPage))
-            property int page: 0
-
-            function turn(by) {
-                page = Math.max(0, Math.min(pages - 1, page + by));
-            }
-
-            FolderListModel {
-                id: files
-                folder: walls.folder !== "" ? "file://" + walls.folder : ""
-                nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.webp"]
-                showDirs: false
-                sortField: FolderListModel.Name
-                onStatusChanged: {
-                    if (status !== FolderListModel.Ready)
-                        return;
-                    const at = indexOf("file://" + walls.current);
-                    if (at >= 0)
-                        walls.page = Math.floor(at / walls.perPage);
-                }
-            }
-
-            Grid {
-                id: wallGrid
-                readonly property real cellWidth: Math.floor((dash.panelWidth - 36 - 3 * 10) / 4)
-                columns: 4
-                spacing: 10
-                readonly property int rows: Math.max(1, Math.min(3, Math.ceil(files.count / 4)))
-                height: rows * 100 + (rows - 1) * 10
-
-                Repeater {
-                    model: Math.max(0, Math.min(walls.perPage, files.count - walls.page * walls.perPage))
-
-                    Item {
-                        id: thumb
-                        required property int index
-                        readonly property int at: walls.page * walls.perPage + index
-                        readonly property string path: files.get(at, "filePath") ?? ""
-                        readonly property bool current: path === walls.current
-                        width: wallGrid.cellWidth
-                        height: 100
-
-                        // Khaslana: square slabs on a hard red offset
-                        Rectangle {
-                            visible: Form.khaslana && Form.active
-                            x: 4
-                            y: 4
-                            width: parent.width
-                            height: parent.height
-                            color: "#8E1424"
-                        }
-
-                        ClippingRectangle {
-                            id: frame
-                            anchors.fill: parent
-                            radius: Form.phainon || !Form.active ? 14 : 0
-                            color: thumb.shard ? "transparent" : Theme.surfaceContainerHigh
-
-                            Image {
-                                id: picture
-                                anchors.fill: parent
-                                // The Flame Reaver draws it through his shard below instead
-                                visible: !thumb.shard
-                                source: files.get(thumb.at, "fileUrl") ?? ""
-                                sourceSize: Qt.size(360, 200)
-                                fillMode: Image.PreserveAspectCrop
-                                asynchronous: true
-                            }
-                        }
-
-                        // Flame Reaver: each thumbnail torn as a shard and greyed, the current one in
-                        // full colour. Only while this view is open, so the layers come and go with it.
-                        readonly property bool shard: Form.reaver && Form.active
-                        readonly property var outline: [Qt.point(0, 0), Qt.point(width, height * 0.06), Qt.point(width * 0.97, height), Qt.point(width * 0.02, height * 0.94), Qt.point(0, 0)]
-
-                        Shape {
-                            id: shardMask
-                            visible: false
-                            anchors.fill: parent
-                            layer.enabled: thumb.shard
-                            preferredRendererType: Shape.CurveRenderer
-
-                            ShapePath {
-                                fillColor: "white"
-                                strokeColor: "transparent"
-                                PathPolyline {
-                                    path: thumb.shard ? thumb.outline : []
-                                }
-                            }
-                        }
-
-                        MultiEffect {
-                            visible: thumb.shard
-                            anchors.fill: parent
-                            source: thumb.shard ? picture : null
-                            saturation: thumb.current ? 0 : -1
-                            brightness: thumb.current || thumbMouse.containsMouse ? 0 : -0.15
-                            maskEnabled: true
-                            maskSource: shardMask
-                        }
-
-                        Shape {
-                            visible: thumb.shard && (thumb.current || thumbMouse.containsMouse)
-                            anchors.fill: parent
-                            preferredRendererType: Shape.CurveRenderer
-
-                            ShapePath {
-                                fillColor: "transparent"
-                                strokeColor: thumb.current ? "#B9A8FF" : Qt.rgba(185 / 255, 168 / 255, 1, 0.5)
-                                strokeWidth: thumb.current ? 2 : 1.5
-                                joinStyle: ShapePath.MiterJoin
-                                PathPolyline {
-                                    path: thumb.shard ? thumb.outline : []
-                                }
-                            }
-                        }
-
-                        CfSurface {
-                            anchors.fill: parent
-                            visible: (Form.phainon || !Form.active) && (thumb.current || thumbMouse.containsMouse)
-                            color: "transparent"
-                            edgeColor: thumb.current ? Theme.primary : Theme.withAlpha(Theme.primary, 0.5)
-                            edgeWidth: thumb.current ? 3 : 2
-                            radius: 14
-                            shape: "round"
-                        }
-
-                        // Khaslana: the current one edged in gold
-                        Rectangle {
-                            anchors.fill: parent
-                            visible: Form.khaslana && Form.active && (thumb.current || thumbMouse.containsMouse)
-                            color: "transparent"
-                            border.width: thumb.current ? 2 : 1
-                            border.color: thumb.current ? "#F2C75C" : "#8A5A2B"
-                        }
-
-                        MouseArea {
-                            id: thumbMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: SessionData.setWallpaper(thumb.path)
-                            onWheel: wheel => walls.turn(wheel.angleDelta.y > 0 ? -1 : 1)
-                        }
-                    }
-                }
-            }
-
-            Item {
-                width: dash.panelWidth - 36
-                height: 30
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 16
-
-                    DIcon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "chevron_left"
-                        size: 24
-                        color: walls.page > 0 ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.25)
-
-                        MouseArea {
-                            anchors.fill: parent
-                            anchors.margins: -5
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: walls.turn(-1)
-                        }
-                    }
-
-                    StyledText {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: dash.tx((walls.page + 1) + " / " + walls.pages + "  ·  " + files.count + " wallpapers")
-                        font.pixelSize: Theme.fontSizeMedium
-                        color: Theme.withAlpha(Theme.surfaceText, 0.75)
-                    }
-
-                    DIcon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "chevron_right"
-                        size: 24
-                        color: walls.page < walls.pages - 1 ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.25)
-
-                        MouseArea {
-                            anchors.fill: parent
-                            anchors.margins: -5
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: walls.turn(1)
-                        }
-                    }
+                function onBack() {
+                    dash.view = "";
                 }
             }
         }

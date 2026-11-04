@@ -19,6 +19,8 @@ Item {
     property bool highlighted: false
     // No background: something behind the card draws it (Khaslana's mosaic)
     property bool bare: false
+    // Phainon: the fluted band along the top (the overview's columns); views use plain paper cards
+    property bool flute: true
     // Flame Reaver shard: four corners as [x, y] fractions of the card, clockwise from top-left
     property var poly: null
     property color capColor: Form.khaslana ? "#E0B04A" : (Form.reaver ? "#B9A8FF" : (Theme.isLightMode ? "#8A6418" : Theme.primary))
@@ -37,13 +39,13 @@ Item {
         });
     }
 
-    CfSurface {
+    // Khaslana: an obsidian block; Flame Reaver without a shard: dark glass with a rule
+    Rectangle {
         visible: !card.bare && !card.shard && !card.fluted
         anchors.fill: parent
-        color: (cardMouse.containsMouse && card.clickable) || card.highlighted ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
-        edgeColor: card.highlighted ? Theme.primary : Theme.withAlpha(Theme.outline, Form.khaslana ? 0.9 : 0.45)
-        edgeWidth: Form.reaver ? 0 : 1
-        radius: 16
+        color: Form.khaslana ? ((cardMouse.containsMouse && card.clickable) || card.highlighted ? "#160D10" : "#0B080B") : ((cardMouse.containsMouse && card.clickable) || card.highlighted ? "#F21C1828" : "#F20D0B14")
+        border.width: 1
+        border.color: card.highlighted ? (Form.khaslana ? "#E0B04A" : "#8F7BE0") : (Form.khaslana ? "#3A1A1E" : "#2C2840")
     }
 
     // Phainon: parchment with a fluted band along the top, like the head of a column
@@ -57,6 +59,7 @@ Item {
         clip: true
 
         Shape {
+            visible: card.flute
             width: parent.width
             height: 8
             preferredRendererType: Shape.CurveRenderer
@@ -76,6 +79,7 @@ Item {
         }
 
         Rectangle {
+            visible: card.flute
             y: 8
             width: parent.width
             height: 1
@@ -136,7 +140,7 @@ Item {
         id: caption
         visible: card.label !== ""
         x: card.capCentered ? Math.round((card.width - width) / 2) : (card.shard ? 26 : 15)
-        y: card.shard || card.fluted ? 18 : 9
+        y: card.shard ? 18 : (card.fluted ? (card.flute ? 18 : 12) : 9)
         spacing: 8
 
         CfGlyph {
@@ -167,7 +171,7 @@ Item {
         id: inner
         anchors.fill: parent
         anchors.margins: card.shard ? 26 : 15
-        anchors.topMargin: card.label !== "" ? caption.y + 16 : (card.fluted ? 18 : 14)
+        anchors.topMargin: card.label !== "" ? caption.y + 16 : (card.fluted && card.flute ? 18 : 14)
         anchors.bottomMargin: card.shard ? 18 : 12
     }
 }

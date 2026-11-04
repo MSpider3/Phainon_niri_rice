@@ -5,6 +5,7 @@ import QtQuick.Shapes
 import qs.Common
 import qs.Services
 import qs.DCommon.Widgets
+import qs.Widgets
 import qs.Modules.DDash
 import "Wellbeing.js" as Wellbeing
 import "../../../DCommon/Common/WheelInput.js" as WheelInput
@@ -17,6 +18,8 @@ DCard {
     property int firstDayOfWeek: 1
     property real limitSeconds: 0
     property bool showTitle: true
+    // Coreflame's dashboard: no card of its own (the view's card holds it), no axis, the form's ink
+    property bool bare: false
     property int hoverPage: -1
     property int hoverIndex: -1
     property real wheelDistance: 0
@@ -33,11 +36,11 @@ DCard {
     readonly property real peak: Math.max(limitSeconds, ...week.map(day => day.active))
     readonly property var axis: Wellbeing.axis(peak)
     readonly property real columnWidth: pager.width / Wellbeing.weekLength
-    readonly property real barWidth: columnWidth * WellbeingMetrics.barWidthRatio
+    readonly property real barWidth: bare ? columnWidth - (Form.phainon ? 14 : 10) : columnWidth * WellbeingMetrics.barWidthRatio
     readonly property real dayLabelHeight: Theme.fontSizeSmall + Theme.spacingXS
     readonly property color pastColor: Theme.primaryContainer
     readonly property color todayColor: Theme.primary
-    readonly property color overColor: Theme.error
+    readonly property color overColor: bare ? ink.danger : Theme.error
     readonly property string rangeText: week.length > 0 ? rangeDate(week[0].date) + " – " + rangeDate(week[week.length - 1].date) : ""
 
     function rangeDate(key) {
@@ -49,11 +52,11 @@ DCard {
             return overColor;
         // Coreflame: Phainon lapis with a gold today, Khaslana red blocks with gold, the Flame Reaver violet with an ember
         if (Form.phainon)
-            return day.today ? "#E2B84A" : "#334786";
+            return day.today ? "#A87A22" : "#334786";
         if (Form.khaslana)
             return day.today ? "#E0B04A" : "#C2252F";
         if (Form.reaver)
-            return day.today ? "#E5544C" : "#8F7BE0";
+            return day.today ? "#F07A85" : "#8F7BE0";
         return day.today ? todayColor : pastColor;
     }
 
@@ -63,6 +66,16 @@ DCard {
 
     function dayLabel(day) {
         return I18n.locale().dayName(day.weekday === 0 ? Wellbeing.weekLength : day.weekday, Locale.ShortFormat);
+    }
+
+    // Under the bars: Phainon's short names and "Today", Khaslana's initials, the Reaver's ">t"
+    function barLabel(day) {
+        if (!bare)
+            return dayLabel(day);
+        if (Form.phainon)
+            return day.today ? I18n.tr("Today") : dayLabel(day);
+        const initial = dayLabel(day).charAt(0);
+        return Form.reaver ? (day.today ? ">" : "") + initial.toLowerCase() : initial.toUpperCase();
     }
 
     function snapTo(index, animate) {
@@ -84,7 +97,8 @@ DCard {
     onPageCountChanged: showCurrentWeek()
 
     restRadius: DashMetrics.cardRadius
-    pad: Theme.spacingL
+    pad: bare ? 0 : Theme.spacingL
+    color: bare ? "transparent" : surfaceColor
     Accessible.role: Accessible.Chart
     Accessible.name: I18n.tr("Weekly screen time", "chart title, screen time per day over the week")
 
@@ -98,6 +112,17 @@ DCard {
         duration: Theme.expressiveDurations.expressiveDefaultSpatial
         easing.type: Easing.BezierSpline
         easing.bezierCurve: atEdge ? Theme.expressiveCurves.expressiveEffects : Theme.expressiveCurves.expressiveDefaultSpatial
+    }
+
+    Binding {
+        target: root.border
+        property: "width"
+        value: 0
+        when: root.bare
+    }
+
+    CfInk {
+        id: ink
     }
 
     Timer {
@@ -128,12 +153,13 @@ DCard {
                 id: totalLabel
                 anchors.baseline: caption.baseline
                 text: WellbeingService.formatDuration(root.hoverDay ? root.hoverDay.active : root.total)
+                font.family: root.bare ? Form.numerals : resolvedFontFamily
                 font.pixelSize: Theme.fontSizeXLarge
-                font.weight: Theme.fontWeightBold
+                font.weight: root.bare ? Font.Normal : Theme.fontWeightBold
                 font.features: ({
                         "tnum": 1
                     })
-                color: root.accentColor
+                color: root.bare ? ink.accent : root.accentColor
             }
 
             StyledText {
@@ -141,10 +167,11 @@ DCard {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Theme.spacingXXS
                 text: root.hoverDay ? root.dayLabel(root.hoverDay) : I18n.tr("Total")
+                font.family: root.bare ? ink.headFont : resolvedFontFamily
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Theme.fontWeightMedium
-                font.capitalization: Font.AllUppercase
-                color: root.mutedColor
+                font.capitalization: root.bare && Form.reaver ? Font.AllLowercase : Font.AllUppercase
+                color: root.bare ? ink.muted : root.mutedColor
             }
 
             Item {
@@ -156,7 +183,7 @@ DCard {
                     anchors.verticalCenter: parent.verticalCenter
                     buttonSize: Theme.buttonHeightXS
                     iconName: "chevron_left"
-                    iconColor: root.mutedColor
+                    iconColor: root.bare ? ink.icon : root.mutedColor
                     enabled: root.page > 0
                     Accessible.name: I18n.tr("Previous")
                     onClicked: root.snapTo(root.page - 1, true)
@@ -168,13 +195,14 @@ DCard {
                     anchors.verticalCenter: parent.verticalCenter
                     width: WellbeingMetrics.rangeLabelWidth
                     horizontalAlignment: Text.AlignHCenter
-                    text: root.rangeText
+                    text: root.bare ? ink.tx(root.rangeText) : root.rangeText
+                    font.family: root.bare ? ink.font : resolvedFontFamily
                     font.pixelSize: Theme.fontSizeSmall
                     font.weight: Theme.fontWeightMedium
                     font.features: ({
                             "tnum": 1
                         })
-                    color: root.weekOffset === 0 ? root.accentColor : root.contentColor
+                    color: root.bare ? (root.weekOffset === 0 ? ink.accent : ink.muted) : (root.weekOffset === 0 ? root.accentColor : root.contentColor)
                     elide: Text.ElideRight
                 }
 
@@ -184,7 +212,7 @@ DCard {
                     anchors.verticalCenter: parent.verticalCenter
                     buttonSize: Theme.buttonHeightXS
                     iconName: "chevron_right"
-                    iconColor: root.mutedColor
+                    iconColor: root.bare ? ink.icon : root.mutedColor
                     enabled: root.weekOffset < 0
                     Accessible.name: I18n.tr("Next")
                     onClicked: root.snapTo(root.page + 1, true)
@@ -202,14 +230,14 @@ DCard {
                 id: plot
                 anchors.left: parent.left
                 anchors.right: axisLabels.left
-                anchors.rightMargin: Theme.spacingS
+                anchors.rightMargin: root.bare ? 0 : Theme.spacingS
                 anchors.top: parent.top
                 anchors.topMargin: Theme.spacingS
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: root.dayLabelHeight + Theme.spacingXS
 
                 Repeater {
-                    model: root.axis.ticks
+                    model: root.bare ? [] : root.axis.ticks
 
                     Rectangle {
                         required property int modelData
@@ -281,12 +309,17 @@ DCard {
                                 width: root.barWidth
                                 height: Math.max(0, plot.height - root.yFor(modelData.active))
                                 visible: !modelData.future && modelData.active > 0
-                                topLeftRadius: Form.phainon ? width / 2 : Theme.cornerRadiusS
-                                topRightRadius: Form.phainon ? width / 2 : Theme.cornerRadiusS
+                                topLeftRadius: Form.phainon ? 6 : Theme.cornerRadiusS
+                                topRightRadius: Form.phainon ? 6 : Theme.cornerRadiusS
                                 color: pieces ? "transparent" : tone
+                                // Flame Reaver: the whole bar leans 12° about its middle
+                                readonly property real lean: Form.reaver ? -0.2126 : 0
+                                transform: Matrix4x4 {
+                                    matrix: Qt.matrix4x4(1, bar.lean, 0, -bar.lean * bar.height / 2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+                                }
                                 opacity: root.hoverIndex === -1 || (root.hoverPage === page.index && root.hoverIndex === index) ? 1 : WellbeingMetrics.dimmedBarOpacity
 
-                                // Khaslana: a gold cap over red blocks with 2 px gaps
+                                // Khaslana: a 3 px gold cap over 10 px red blocks with 2 px gaps
                                 Rectangle {
                                     visible: Form.khaslana
                                     width: bar.width
@@ -295,31 +328,27 @@ DCard {
                                 }
 
                                 Repeater {
-                                    model: Form.khaslana ? Math.ceil(Math.max(0, bar.height - 5) / 12) : 0
+                                    model: Form.khaslana ? Math.ceil(Math.max(0, bar.height - 3) / 12) : 0
 
                                     Rectangle {
                                         required property int index
-                                        y: 5 + index * 12
+                                        y: 3 + index * 12
                                         width: bar.width
                                         height: Math.min(10, bar.height - y)
                                         color: bar.tone
                                     }
                                 }
 
-                                // Flame Reaver: scratches skewed -20° about their middles, 8 px with 3 px gaps
+                                // Flame Reaver: 8 px scratches with 3 px gaps
                                 Repeater {
                                     model: Form.reaver ? Math.ceil(bar.height / 11) : 0
 
                                     Rectangle {
-                                        id: scratch
                                         required property int index
                                         y: index * 11
                                         width: bar.width
                                         height: Math.min(8, bar.height - y)
                                         color: bar.tone
-                                        transform: Matrix4x4 {
-                                            matrix: Qt.matrix4x4(1, -0.364, 0, 0.182 * scratch.height, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
-                                        }
                                     }
                                 }
 
@@ -347,10 +376,11 @@ DCard {
                                     required property var modelData
                                     width: root.columnWidth
                                     horizontalAlignment: Text.AlignHCenter
-                                    text: root.dayLabel(modelData)
+                                    text: root.barLabel(modelData)
+                                    font.family: root.bare ? ink.font : resolvedFontFamily
                                     font.pixelSize: Theme.fontSizeSmall
                                     font.weight: modelData.today ? Theme.fontWeightBold : Theme.fontWeightMedium
-                                    color: modelData.today ? root.accentColor : root.mutedColor
+                                    color: root.bare ? (modelData.today && !Form.phainon ? (Form.khaslana ? "#F5D27A" : "#B9A8FF") : ink.muted) : (modelData.today ? root.accentColor : root.mutedColor)
                                 }
                             }
                         }
@@ -432,10 +462,10 @@ DCard {
                 anchors.right: parent.right
                 anchors.top: plot.top
                 anchors.bottom: plot.bottom
-                width: WellbeingMetrics.axisLabelWidth
+                width: root.bare ? 0 : WellbeingMetrics.axisLabelWidth
 
                 Repeater {
-                    model: root.axis.ticks
+                    model: root.bare ? [] : root.axis.ticks
 
                     StyledText {
                         required property int modelData
