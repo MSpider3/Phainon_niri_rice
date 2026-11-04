@@ -77,6 +77,29 @@ static shapes drawn once; motion runs only while a panel opens; there is no blur
 pieces (the Khaslana lock mural and its blur are gone); and each panel builds only the open
 form's layout, and only while it is shown.
 
+The later pieces keep to the same rules: the dashboard's full views (DashSheet), DMS's own
+windows and menus in the form's frame, the power menu's loop, Khaslana's island wings and its
+golden-blood marks (small static slivers instead of long cracks). Where a form frame replaces a
+stock window, DMS's background blur under it is switched off. The only effects they add are soft
+drop shadows (RectangularShadow, no offscreen layer) and a mask on the Flame Reaver's wallpaper
+thumbnails, both only while the panel is open.
+
+### Spot check, 5 November 2026
+
+The live shell after 1 h 18 min, Khaslana form, on mains, Performance profile, with the machine in
+use (load average about 2), 90 s sample:
+
+| | Measured |
+|---|---|
+| Shell CPU | 2.4 % |
+| Main-thread wakeups per second | 31.6 (83 across all threads) |
+| Shell memory | 564 MB |
+
+Not an idle figure and not comparable with the Flame Reaver row above. With the CPU busy, the
+chimera was awake and walking (on mains with full motion it steps every 90–300 ms, faster the
+busier the CPU), and the render thread drew about 9 frames a second for it. An idle Khaslana
+measurement on battery is still to be taken.
+
 ## Not changed yet
 
 - The opening cinematic still waits a fixed 2 s for the desktop instead of waiting for it to be
