@@ -162,7 +162,7 @@ git pull
 sh install.sh update
 ```
 
-`update` refreshes the fonts, theme and plugin, assembles the shell from `vendor/` (the stock DMS 2.0 interface) plus `overlay/` (everything the rice changes) into the live folder, and restarts DMS. `sh install.sh build` does only the assembling.
+`update` refreshes the fonts, theme and plugin, assembles the shell from `vendor/` (the stock DMS 2.0 interface) plus `overlay/` (everything the rice changes) into the live folder, and restarts DMS. `sh install.sh build` does only the assembling. It keeps whichever shell is armed: if the fail-safe has put stock DMS back (`sh coreflame.sh status` says so), run `sh coreflame.sh on` to turn the rice back on.
 
 If you tinker with `overlay/`, try changes in a sandboxed copy first; it opens in its own window and doesn't touch your session:
 
