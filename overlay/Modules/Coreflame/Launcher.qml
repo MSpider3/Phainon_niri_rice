@@ -46,6 +46,15 @@ PanelWindow {
     readonly property real headerHeight: 28
     readonly property int visibleRows: Math.max(4, Math.floor(listArea.height / rowHeight))
     readonly property var flat: controller.flatModel ?? []
+    // While closed the list holds no rows and keeps its direction: a form change flipped the
+    // direction of a closed launcher, Qt rebuilt the old rows, and one pointed at an app entry
+    // already freed by the form change, which crashed the shell. Opening runs a fresh search.
+    readonly property bool live: shown || opening > 0
+    property bool upward: rv
+    onRvChanged: if (!live)
+        upward = rv
+    onLiveChanged: if (!live)
+        upward = rv
     readonly property int itemCount: flat.length - (controller.sections?.length ?? 0)
     readonly property var modes: ["all", "apps", "files", "plugins"]
 
@@ -887,10 +896,10 @@ PanelWindow {
                         id: list
                         anchors.fill: parent
                         clip: true
-                        model: launcher.flat
+                        model: launcher.live ? launcher.flat : []
                         boundsBehavior: Flickable.StopAtBounds
                         currentIndex: controller.selectedFlatIndex
-                        verticalLayoutDirection: launcher.rv ? ListView.BottomToTop : ListView.TopToBottom
+                        verticalLayoutDirection: launcher.upward ? ListView.BottomToTop : ListView.TopToBottom
 
                         delegate: Item {
                             id: row

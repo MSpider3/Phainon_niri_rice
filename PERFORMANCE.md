@@ -57,9 +57,11 @@ a session.
 
 Under Power Saver the shell replaced your own niri window animation with a 150 ms linear fade
 that looked like no animation at all. Otherwise it used the 650 ms eclipse shader, also on battery.
-**Fixed:** the eclipse plays on mains outside Power Saver. On battery or under Power Saver the
-shell adds no window animation, so niri plays the one from your own config. DMS's "reduce motion"
-does not turn the eclipse off: DMS 2.0's settings migration switches it on from an old island-only toggle.
+**Fixed:** the eclipse played on mains outside Power Saver only, with niri's own animation on
+battery or under Power Saver. **Changed again (12 November 2026), by request:** the eclipse now
+plays in every power mode, battery and Power Saver included. It costs a short GPU burst (650 ms)
+per window opened or closed and nothing in between. DMS's "reduce motion" does not turn the
+eclipse off: DMS 2.0's settings migration switches it on from an old island-only toggle.
 
 ## After the per-form redesign
 

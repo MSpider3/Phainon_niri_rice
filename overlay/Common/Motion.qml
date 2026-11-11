@@ -14,10 +14,10 @@ Singleton {
     readonly property bool reduced: typeof SettingsData !== "undefined" && SettingsData.reduceMotion
     readonly property string tier: !Form.active ? "stock" : ((Form.reaver || saver || reduced) ? "still" : (onBattery ? "lean" : "full"))
     readonly property bool still: tier === "still"
-    // The eclipse window animation (a GPU shader, 650 ms per open/close) on mains outside Power
-    // Saver, in every form; otherwise niri's own animation from the user's config plays. Not tied
-    // to "reduce motion": DMS 2.0's v39 migration turns that on from an old island-only toggle.
-    readonly property bool richWindows: Form.active && !onBattery && !saver
+    // The eclipse window animation (a GPU shader, 650 ms per open/close) in every form and every
+    // power mode, battery and Power Saver included (asked for). Not tied to "reduce motion":
+    // DMS 2.0's v39 migration turns that on from an old island-only toggle.
+    readonly property bool richWindows: Form.active
 
     // How every island panel opens (its `reveal` follows `opening` through step()): Phainon grows
     // with an overshoot, Khaslana spills heavily, the Flame Reaver cracks open in four hard steps.

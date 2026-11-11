@@ -86,7 +86,7 @@ The dashboard's full views (music, messages, screen time, network, wallpapers):
 
 **Motion and sound**
 
-- **Window animation:** windows open and close with a short black-and-red eclipse, the "Black Tide" from Phainon's technique, in every form. On battery or the Power Saver profile, niri's own animation plays instead.
+- **Window animation:** windows open and close with a short black-and-red eclipse, the "Black Tide" from Phainon's technique, in every form and every power mode, on battery and Power Saver too.
 - **Opening and closing cinematics** play at the first start after boot and before a restart or shut down. Esc or a click skips them.
 - **Lock screen video.** After 15 seconds on the lock screen with no input, a muted video plays full screen. On battery it plays a lighter 720p copy, dims the screen, and stays off below 20 %. Any key or mouse move brings the password field back.
 - **Sounds:** a short sound when the form changes and a glass chime when the battery runs low. They follow DMS's sounds switch.
